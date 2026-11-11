@@ -1,0 +1,11 @@
+services:
+  slatematch:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      SLATEMATCH_BOOTSTRAP_KEY: "${SLATEMATCH_BOOTSTRAP_KEY:?set a strong bootstrap key}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      SLATEMATCH_RATE_LIMIT_PER_MIN: "${SLATEMATCH_RATE_LIMIT_PER_MIN:-300}"
+    volumes: ["slatematch-data:/app/data"]
+volumes:
+  slatematch-data:

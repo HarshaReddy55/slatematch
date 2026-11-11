@@ -1,0 +1,7 @@
+data/
+__pycache__/
+.venv/
+.rustup/
+.cargo/
+rust-kernel/target/
+*.db

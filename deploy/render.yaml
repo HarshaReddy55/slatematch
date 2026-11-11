@@ -1,0 +1,26 @@
+# Render Blueprint - deploy: connect this repo in Render, it reads this file.
+# DEMO posture (deliberate): no bootstrap key is set, so the service opens
+# straight into the built-in demo workspace (synthetic data only). Do NOT
+# use this posture for real customer data - set SLATEMATCH_BOOTSTRAP_KEY in
+# the Render dashboard to switch the app into API-key mode.
+# Free plan notes: 512 MB RAM (app uses ~155 MB measured), ephemeral
+# filesystem (demo data resets on redeploy), sleeps after 15 min idle.
+services:
+  - type: web
+    name: slatematch
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SLATEMATCH_DATA_DIR
+        value: /tmp/slatematch-data
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SLATEMATCH_RATE_LIMIT_PER_MIN
+        value: "300"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"

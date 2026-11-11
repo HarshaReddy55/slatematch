@@ -1,0 +1,17 @@
+# Fly.io - deploy: fly launch --no-deploy, set secrets, fly deploy.
+# No free tier (trial only); smallest always-on machine is a few dollars/month.
+app = "slatematch"
+primary_region = "bom"   # Mumbai; change as needed
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
