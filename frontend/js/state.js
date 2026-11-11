@@ -5,9 +5,10 @@ const $=id=>document.getElementById(id);
 const money=c=>{c=c||0; const v=(Math.abs(c)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); return c<0?"-$"+v:"$"+v};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function sessionId(){let s=sessionStorage.getItem("slatematch_session_id");if(!s){s=(crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0,v=c==="x"?r:(r&0x3|0x8);return v.toString(16)}));sessionStorage.setItem("slatematch_session_id",s);}return s}
-function authHeaders(){const tn=localStorage.getItem("slate-tenant")||"";return {"Content-Type":"application/json","X-Workspace-Session":sessionId(),...(tn?{"X-Tenant-Id":tn}:{})}}
+function apiKey(){try{return localStorage.getItem("slate-key")||""}catch(e){return ""}}
+function authHeaders(){const tn=localStorage.getItem("slate-tenant")||"";const k=apiKey();return {"Content-Type":"application/json","X-Workspace-Session":sessionId(),...(tn?{"X-Tenant-Id":tn}:{}),...(k?{"X-API-Key":k}:{})}}
 let __apiN=0;
-async function api(path,opts={}){__apiN++;const lb=$("loadbar");if(lb)lb.classList.add("on");try{const r=await fetch(path,{headers:authHeaders(),...opts});if(!r.ok){throw new Error((await r.text()).slice(0,300))}return r.json()}finally{__apiN--;if(__apiN<=0){__apiN=0;const lb2=$("loadbar");if(lb2)setTimeout(()=>lb2.classList.remove("on"),250)}}}
+async function api(path,opts={}){__apiN++;const lb=$("loadbar");if(lb)lb.classList.add("on");try{let r=await fetch(path,{headers:authHeaders(),...opts});if(r.status===401){const got=await ensureApiKey();if(got)r=await fetch(path,{headers:authHeaders(),...opts})}if(!r.ok){throw new Error((await r.text()).slice(0,300))}return r.json()}finally{__apiN--;if(__apiN<=0){__apiN=0;const lb2=$("loadbar");if(lb2)setTimeout(()=>lb2.classList.remove("on"),250)}}}
 function bumpGen(){WS_GEN++}
 function busyBtn(btn,label){if(!btn)return()=>{};const old=btn.innerHTML;btn.disabled=true;btn.innerHTML=`<span class="spin"></span>${label}`;return()=>{btn.disabled=false;btn.innerHTML=old}}
 function flashEl(el){if(!el)return;el.scrollIntoView({behavior:"smooth",block:"center"});el.classList.remove("row-highlight-flash");void el.offsetWidth;el.classList.add("row-highlight-flash");setTimeout(()=>el.classList.remove("row-highlight-flash"),2100)}
@@ -24,6 +25,37 @@ async function downloadExport(path,fname){
   }catch(e){ toast(e.message) }
 }
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),3400)}
+/* Production access: when the deployment is locked with API keys, the
+   server answers 401 and the UI asks for the workspace key once, then
+   retries. The key lives only in this browser (localStorage); the server
+   keeps just a hash of every key it issues. Parallel 401s share one
+   prompt through KEY_WAITERS. The bootstrap key never belongs here - it
+   only mints workspace keys through the admin endpoints. */
+let KEY_WAITERS=null;
+function refreshKeyBtn(){const b=$("key-btn");if(b)b.textContent=apiKey()?"ACCESS KEY: SET":"ACCESS KEY"}
+function openKeyModal(cb){
+  const m=$("keymodal"); if(!m){ if(cb)cb(!!apiKey()); return }
+  if(cb){ (KEY_WAITERS=KEY_WAITERS||[]).push(cb) }
+  const inp=$("key-input"); if(inp) inp.value=apiKey();
+  const rm=$("key-remove"); if(rm) rm.style.display=apiKey()?"":"none";
+  m.classList.add("open"); if(inp){ inp.focus(); inp.select() }
+}
+function closeKeyModal(saved){
+  const m=$("keymodal"); if(m)m.classList.remove("open");
+  const w=KEY_WAITERS; KEY_WAITERS=null; if(w) w.forEach(f=>f(saved));
+}
+function ensureApiKey(){ return new Promise(res=>{ openKeyModal(res) }) }
+function saveApiKey(){
+  const inp=$("key-input"); const v=(inp?inp.value:"").trim();
+  if(!v){ toast("Paste the API key first"); return }
+  try{localStorage.setItem("slate-key",v)}catch(e){}
+  refreshKeyBtn(); closeKeyModal(true); toast("Access key saved - this browser will use it for every request");
+}
+function removeApiKey(){
+  try{localStorage.removeItem("slate-key")}catch(e){}
+  refreshKeyBtn(); closeKeyModal(false); toast("Access key removed from this browser");
+}
+refreshKeyBtn();
 /* v23 tour: the six steps are the product. Older view names stay as
    aliases so every existing link, chip and command keeps working. */
 const VIEW_ALIAS={gov:"run"};
@@ -293,4 +325,4 @@ async function resetWorkspace(btn){
   }catch(e){ toast("Reset failed: "+e.message) }finally{ if(btn)btn.disabled=false }
 }
 
-document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;try{closeApprDrawer()}catch(_){} try{closeDocs()}catch(_){} try{closeCmdk()}catch(_){} const m=$("acts-menu");if(m)m.classList.remove("open")});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;try{closeApprDrawer()}catch(_){} try{closeDocs()}catch(_){} try{closeCmdk()}catch(_){} try{closeKeyModal(false)}catch(_){} const m=$("acts-menu");if(m)m.classList.remove("open")});

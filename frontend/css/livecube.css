@@ -297,7 +297,7 @@ body.lens-off .jdnote{display:none}
   .bar1r .tenantsel{display:flex;flex-direction:column;gap:4px;margin:0}
   .bar1r .tenantsel select{width:100%;margin-left:0}
   .bar1r .sesschip{display:block;margin:0}
-  #lens-btn,#docs-btn{margin:0;width:100%;text-align:left}
+  #lens-btn,#docs-btn,#key-btn{margin:0;width:100%;text-align:left}
   #cmdk-btn{position:static;width:100%;display:flex;align-items:center;gap:9px;border:1px solid var(--line2);border-radius:999px;padding:6px 12px;color:var(--mut);background:transparent;cursor:pointer}
   #cmdk-btn::after{content:"MENU";font:600 10.5px var(--mono);letter-spacing:.08em}
   #cmdk-btn:hover{color:#fff;border-color:var(--blue)}
@@ -313,8 +313,8 @@ body.lens-off .jdnote{display:none}
   #cmdk-btn{display:none}
   main{margin-left:212px;width:calc(100% - 212px)}
 }
-#lens-btn,#docs-btn{font:600 10.5px var(--mono);letter-spacing:.08em;background:transparent;color:var(--mut);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;cursor:pointer;margin-right:14px}
-#lens-btn:hover,#docs-btn:hover{color:#fff;border-color:var(--blue)}
+#lens-btn,#docs-btn,#key-btn{font:600 10.5px var(--mono);letter-spacing:.08em;background:transparent;color:var(--mut);border:1px solid var(--line2);border-radius:999px;padding:6px 12px;cursor:pointer;margin-right:14px}
+#lens-btn:hover,#docs-btn:hover,#key-btn:hover{color:#fff;border-color:var(--blue)}
 .jdnote{border:1px solid rgba(61,117,232,.35);background:rgba(61,117,232,.06);color:#c9d6f5;font-size:13px;line-height:1.6;padding:10px 14px;margin:0 0 14px}
 .jdnote b{color:#fff;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;margin-right:8px}
 .speccard .t{display:block;font-weight:700;color:#fff;font-size:13.5px;border-bottom:1px solid var(--line);padding-bottom:7px;margin-bottom:8px;letter-spacing:-.01em}
@@ -461,3 +461,10 @@ details.agentref summary:hover{color:#fff}
 details.agentref table{margin-top:10px}
 
 .casebar .cc:first-child .v{white-space:normal}
+
+/* Production access key prompt - mirrors the cmdk overlay language */
+#keymodal{position:fixed;inset:0;background:rgba(4,4,6,.62);backdrop-filter:blur(3px);z-index:320;display:none}
+#keymodal.open{display:block}
+.keymodal-box{max-width:480px;margin:14vh auto 0;background:#262626;border:1px solid #3a3a3c;border-radius:6px;box-shadow:0 28px 70px rgba(0,0,0,.65);padding:20px;animation:fadeUp .25s ease}
+.keymodal-box input{width:100%;background:#1d1d1f;border:1px solid var(--line2);color:#fff;font:inherit;font-size:14px;padding:11px 12px;outline:none;box-sizing:border-box}
+.keymodal-box input:focus{border-color:var(--blue)}

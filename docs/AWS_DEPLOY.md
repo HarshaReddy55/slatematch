@@ -5,7 +5,7 @@ SlateMatch product pack, document 6 of 8. Previous: Deployment Guide. Next: Go-T
 ## 6.1 Production Environment Specification
 SlateMatch is deployed on **Amazon ECS Express Mode (ap-south-1, Mumbai)** using **Amazon ECR** for container registry storage, behind the Express Mode HTTPS endpoint.
 
-* **Live Endpoint:** assigned when the ECS service is created and recorded here at deployment.
+* **Live Endpoint:** https://sl-a434f633cb69488ca19e9b0a7c0c2cf9.ecs.ap-south-1.on.aws/ (ECS Express service `slatematch`, cluster `default`; created 11 Nov 2026; Muse live audit 11 Nov 2026: canonical demo run reproduced exactly on this endpoint).
 * **AWS Region:** `ap-south-1`
 * **Container Port:** `8080`
 * **ALB Health Check:** `GET /health` (expects HTTP `200 OK`)
