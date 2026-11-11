@@ -244,7 +244,7 @@ function renderCaseBrief(){
   // no await stands between reading WS and writing, so no stale async
   // invocation can ever land last. The outcome fills its own container
   // when its fetch resolves, and only if that run is still the latest.
-  el.innerHTML=`<div class="panel briefpanel" id="brief-panel" style="margin-bottom:18px"><div class="briefhead"><h3 style="margin:0">Case brief - ${esc(c.name)} <span data-info="impact"></span></h3><button class="btn small ghost" id="brief-toggle" onclick="toggleBrief()"></button></div><div id="brief-mini"></div><div id="brief-full"><div class="grid2">
+  el.innerHTML=`<div class="panel briefpanel" id="brief-panel" style="margin-bottom:18px"><div class="briefhead"><h3 style="margin:0">Case brief - ${esc(c.name)}</h3><button class="btn small ghost" id="brief-toggle" onclick="toggleBrief()"></button></div><div id="brief-mini"></div><div id="brief-full"><div class="grid2">
     <div><div class="k" style="font-family:var(--mono);font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.1em">The situation - what came in</div>
     <p style="margin:8px 0">${esc(story||"A working dataset loaded into the shared workspace.")}</p>
     ${shows?`<small><b>What this case tests:</b> ${esc(shows)}</small><br>`:""}
@@ -258,7 +258,7 @@ function renderCaseBrief(){
 }
 function stagedTable(pays){
   if(!pays.length) return "";
-  return `<table class="staged-t"><tr><th>Payment <span data-info="payid"></span></th><th>Payer <span data-info="cust"></span></th><th>Amount <span data-info="amt"></span></th><th>References <span data-info="lines"></span></th><th>Claimed deduction <span data-info="disc"></span></th><th>Deduction reason <span data-info="held"></span></th><th>POD <span data-info="state"></span></th><th>Remittance <span data-info="detail"></span></th></tr>${pays.map(p=>`<tr><td>${esc(p.payment_id)}</td><td>${esc(p.payer_raw)}</td><td>${money(p.amount_cents)}</td><td>${(p.references||[]).map(esc).join(", ")||"<small>none</small>"}</td><td>${p.claimed_deduction_cents?money(p.claimed_deduction_cents):"-"}</td><td>${esc(p.deduction_reason_raw||"-")}</td><td>${p.pod_verified_clean?pill("clean","ok"):pill("not verified","grey")}</td><td><small>${esc(p.remittance_text||"-")}</small></td></tr>`).join("")}</table>`;
+  return `<table class="staged-t"><tr><th>Payment</th><th>Payer</th><th>Amount</th><th>References</th><th>Claimed deduction</th><th>Deduction reason</th><th>POD</th><th>Remittance</th></tr>${pays.map(p=>`<tr><td>${esc(p.payment_id)}</td><td>${esc(p.payer_raw)}</td><td>${money(p.amount_cents)}</td><td>${(p.references||[]).map(esc).join(", ")||"<small>none</small>"}</td><td>${p.claimed_deduction_cents?money(p.claimed_deduction_cents):"-"}</td><td>${esc(p.deduction_reason_raw||"-")}</td><td>${p.pod_verified_clean?pill("clean","ok"):pill("not verified","grey")}</td><td><small>${esc(p.remittance_text||"-")}</small></td></tr>`).join("")}</table>`;
 }
 function renderStaged(){
   const el=$("staged-box"); if(!el||!WS) return;

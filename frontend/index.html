@@ -2,8 +2,8 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SlateMatch - Autonomous Cash Application Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/livecube.css?v=56"></head>
-<body class="lens-off boot"><div id="loadbar"></div><header class="topbar"><i class="rain r1"></i><i class="rain r2"></i><i class="rain r3"></i><div class="bar1"><div class="brand"><div class="logomark"></div><div><h1>Slate<span>Match</span></h1><div class="sub">AUTONOMOUS CASH APPLICATION AGENT</div></div></div><div class="bar1r"><label class="tenantsel" title="Tenant - every tenant has its own database; nothing crosses">TENANT <select id="tenant-switch" onchange="switchTenant(this.value)"></select></label><span class="sesschip" id="session-chip" title="Your browser session has its own clone of the demo workspace - another visitor opening this link gets a separate one, so nobody can wipe your screen"></span><button id="docs-btn" onclick="openDocs()" title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">PRODUCT DOCS</button><button id="lens-btn" onclick="toggleLens()" title="Hiring-manager lens: show the JD mapping banner on every view">JD LENS: OFF</button><button id="key-btn" onclick="openKeyModal()" title="Set the API key this browser uses when this deployment is locked with keys">ACCESS KEY</button></div><button id="cmdk-btn" onclick="openCmdk()" title="Menu - jump to any view or action (Ctrl or Cmd + K)" aria-label="Open menu"><svg width="24" height="17" viewBox="0 0 24 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="2" y1="2.5" x2="22" y2="2.5"/><line x1="2" y1="8.5" x2="22" y2="8.5"/><line x1="2" y1="14.5" x2="22" y2="14.5"/></svg></button></div></span><nav class="navrow"><span class="grp">OPERATE</span><button data-s="dash" class="active"><span class="num">01</span>Dashboard</button><button data-s="cases"><span class="num">02</span>Use Cases</button><button data-s="upload"><span class="num">03</span>Upload Center</button><button data-s="run"><span class="num">04</span>Run Reconciliation</button><button data-s="sap"><span class="num">05</span>SAP BAPI &amp; EBRR</button><span class="grp">INSIGHT &amp; GOVERNANCE</span><button data-s="ledger"><span class="num">06</span>Ledger</button><button data-s="forecast"><span class="num">07</span>Forecast and Collections</button><button data-s="mail"><span class="num">08</span>Outbound Mail Hub</button><button data-s="policy"><span class="num">09</span>Policy Studio</button><span class="grp">EVALS &amp; ARCHITECTURE</span><button data-s="eval"><span class="num">10</span>Evaluations</button><button data-s="health"><span class="num">11</span>Agent Health</button><button data-s="method"><span class="num">12</span>Methodology</button><button data-s="arch"><span class="num">13</span>Architecture</button><button data-s="product"><span class="num">14</span>Product Thinking</button></nav><span class="builtby"><span class="ck">BUILT BY</span><b>C. Harsha Vardhana Reddy</b><span class="cs">IIM Visakhapatnam | NIT Andhra Pradesh</span></header>
+<link rel="stylesheet" href="css/livecube.css?v=57"></head>
+<body class="boot"><div id="loadbar"></div><header class="topbar"><i class="rain r1"></i><i class="rain r2"></i><i class="rain r3"></i><div class="bar1"><div class="brand"><div class="logomark"></div><div><h1>Slate<span>Match</span></h1><div class="sub">AUTONOMOUS CASH APPLICATION AGENT</div></div></div><div class="bar1r"><label class="tenantsel" title="Tenant - every tenant has its own database; nothing crosses">TENANT <select id="tenant-switch" onchange="switchTenant(this.value)"></select></label><span class="sesschip" id="session-chip" title="Your browser session has its own clone of the demo workspace - another visitor opening this link gets a separate one, so nobody can wipe your screen"></span><button id="docs-btn" onclick="openDocs()" title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">PRODUCT DOCS</button><button id="key-btn" onclick="openKeyModal()" title="Set the API key this browser uses when this deployment is locked with keys">ACCESS KEY</button></div><button id="cmdk-btn" onclick="openCmdk()" title="Menu - jump to any view or action (Ctrl or Cmd + K)" aria-label="Open menu"><svg width="24" height="17" viewBox="0 0 24 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="2" y1="2.5" x2="22" y2="2.5"/><line x1="2" y1="8.5" x2="22" y2="8.5"/><line x1="2" y1="14.5" x2="22" y2="14.5"/></svg></button></div></span><nav class="navrow"><span class="grp">OPERATE</span><button data-s="dash" class="active"><span class="num">01</span>Dashboard</button><button data-s="cases"><span class="num">02</span>Use Cases</button><button data-s="upload"><span class="num">03</span>Upload Center</button><button data-s="run"><span class="num">04</span>Run Reconciliation</button><button data-s="sap"><span class="num">05</span>SAP BAPI &amp; EBRR</button><span class="grp">INSIGHT &amp; GOVERNANCE</span><button data-s="ledger"><span class="num">06</span>Ledger</button><button data-s="forecast"><span class="num">07</span>Forecast and Collections</button><button data-s="mail"><span class="num">08</span>Outbound Mail Hub</button><button data-s="policy"><span class="num">09</span>Policy Studio</button><span class="grp">EVALS &amp; ARCHITECTURE</span><button data-s="eval"><span class="num">10</span>Evaluations</button><button data-s="health"><span class="num">11</span>Agent Health</button><button data-s="method"><span class="num">12</span>Methodology</button><button data-s="arch"><span class="num">13</span>Architecture</button><button data-s="product"><span class="num">14</span>Product Thinking</button></nav><span class="builtby"><span class="ck">BUILT BY</span><b>C. Harsha Vardhana Reddy</b><span class="cs">IIM Visakhapatnam | NIT Andhra Pradesh</span></header>
 <div class="layout">
 <main>
 <div class="casebar" id="casebar">
@@ -22,11 +22,11 @@
 
 
 <section id="dash" class="active">
-<div class="vhead"><div><div class="eyebrow">OPERATE — 01 / DASHBOARD</div><h2>Dashboard</h2><div class="purpose">Executive KPIs, the value summary, and run history: the headline numbers of the active case, computed live from its latest run. Loading a case stages it - invoices and wires land in the workspace untouched - and one explicit run executes the pipeline - five agents in sequence, with the Briefing agent composing on demand - so you always see the before and the after.</div></div>
-<button class="howbtn" onclick="toggleHow('dash')">How this works</button></div>
-<div class="how" id="how-dash"><b>One workspace, one case:</b> the case bar above is the single source of truth. Load a case (demo, a use-case pack, the builder, or your own uploaded files) and the Dashboard, Ledger, Run, Approvals, Forecast and the assistant (bottom right) all work on exactly that data. <b>How a payment flows:</b> the engine compares each staged payment with the case's unpaid invoices. If it finds an exact match (nothing left unexplained) and its confidence passes the policy threshold, it <b>auto-posts</b> it - unless the amount crosses the maker-checker threshold, which holds even an exact match for a second approver. Anything less becomes a <b>proposed match</b> for a person to approve, or an <b>exception</b> with a suggested next step. On a first visit the demo case loads in its staged state: the readiness panel shows the real portfolio waiting, and one click on Execute runs the solver in front of you - every number after that is counted from that run's stored records. <b>Reset to empty</b> in the case bar clears the workspace whenever you want to start clean.</div>
-<div class="panel"><h3>What SlateMatch has done for you <span data-info="impact"></span></h3><div id="impact-body"><small>Run a case and this panel counts the money the agent posted, the analyst hours it returned and the deduction recovery it set in motion.</small></div></div>
-<div class="panel"><h3>Save &amp; retrieve this session <span data-info="savesess"></span></h3><div class="d">Save the workspace exactly as it stands - the case, its runs, every decision, approval and draft - and get a session ID. Enter that ID here on any later visit and the workspace comes back in the exact saved state. Saves live on this server for the life of the deployment; a redeploy clears them.</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><button class="btn" onclick="saveSession(this)">Save this session</button><input id="session-id-in" type="text" placeholder="Enter session ID - e.g. SM-7K2QX-9M4TD" style="flex:1;min-width:240px;width:auto" autocomplete="off" spellcheck="false"><button class="btn ghost" onclick="restoreSession(this)">Retrieve session</button></div><div id="save-out" style="margin-top:8px"></div><div id="saves-list" style="margin-top:4px"></div></div>
+<div class="vhead"><div><div class="eyebrow">OPERATE — 01 / DASHBOARD</div><h2>Dashboard</h2></div>
+</div>
+
+<div class="panel"><h3>What SlateMatch has done for you</h3><div id="impact-body"><small>Run a case and this panel counts the money the agent posted, the analyst hours it returned and the deduction recovery it set in motion.</small></div></div>
+<div class="panel"><h3>Save &amp; retrieve this session</h3><div class="d">Save a snapshot of this workspace and restore it later with the session ID. Snapshots are stored in the workspace data volume.</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px"><button class="btn" onclick="saveSession(this)">Save this session</button><input id="session-id-in" type="text" placeholder="Enter session ID - e.g. SM-7K2QX-9M4TD" style="flex:1;min-width:240px;width:auto" autocomplete="off" spellcheck="false"><button class="btn ghost" onclick="restoreSession(this)">Retrieve session</button></div><div id="save-out" style="margin-top:8px"></div><div id="saves-list" style="margin-top:4px"></div></div>
 <div class="ribbon" id="ribbon">
 <div class="cell"><div class="k">Autonomous resolution rate (last run) <span data-info="stp"></span></div><div class="v" id="r-stp">-</div><div class="n" id="r-stp-sub" style="margin-top:2px"></div></div>
 <div class="cell"><div class="k"><span id="r-susp-k">Unapplied cash in suspense</span> <span data-info="susp"></span></div><div class="v" id="r-susp">-</div></div>
@@ -49,21 +49,16 @@
 
 
 
-<div class="guide" onclick="this.classList.toggle('open')"><div class="ghead"><span class="tag">01</span><b>Component Guide - Dashboard</b><span>Expand guide</span></div><div class="gbody">
-<div class="gcol"><div class="h">What it is</div><p>The home screen: the headline results, a summary strip (the ribbon) worked out from the latest run, and the history of every run.</p></div>
-<div class="gcol"><div class="h">How it is calculated</div><p>Touchless rate = payments posted on their own, divided by all payments in the run (hard payments are counted, not hidden). Unapplied cash = the total of leftover amounts across the run's matches. Latency = the average solver time stored on each match.</p></div>
-<div class="gcol"><div class="h">What it means</div><p>If the unapplied-cash figure grows from run to run, money is arriving faster than the agent can explain it. That points to poor remittance data, not a weak solver.</p></div>
-<div class="gcol"><div class="h">What you can do</div><p>Run the demo, upload your own files in the Upload Center, or open any past run in the table to see its evidence.</p></div></div></div>
-<div class="panel"><h3>Run history <span data-info="runhist"></span></h3><div class="d">Every batch the agent has executed in this workspace. Select a run to inspect its matches and exceptions.</div><div id="runs-t"><small>No runs yet. Load a case or upload payments to create the first run.</small></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('cases')">Next Step: 02 Use Cases &#8594;</button></div>
+<div class="panel"><h3>Run history</h3><div class="d">Every batch the agent has executed in this workspace. Select a run to inspect its matches and exceptions.</div><div id="runs-t"><small>No runs yet. Load a case or upload payments to create the first run.</small></div></div>
+
 </section>
-<section id="cases"><div class="vhead"><div><div class="eyebrow">OPERATE — 02 / USE CASES</div><h2>Use Cases</h2><div class="purpose">10 synthetic scenario packs and the Custom Case Builder. Stage a pack to inspect it first, or stage and run it in one click; the builder lets a reviewer assemble a case of their own and watch the agent work on it.</div></div></div><div class="subhead">Use case packs &amp; the custom case builder</div>
+<section id="cases"><div class="vhead"><div><div class="eyebrow">OPERATE — 02 / USE CASES</div><h2>Use Cases</h2></div></div><div class="subhead">Use case packs &amp; the custom case builder</div>
 
 
 
 <div class="grid2" id="case-grid"><div class="skl"><i></i><i></i><i></i></div></div>
 <div id="case-out"></div>
-<div class="panel"><h3>Custom Case Builder <span data-info="builder"></span></h3><div class="d">Build your own test: enter invoices and one payment, and they load into the shared workspace as a case like any other - the builder's run button loads and runs it, then opens Run Reconciliation with the full derivation on the match. Bring the case you think breaks it.</div>
+<div class="panel"><h3>Custom Case Builder</h3><div class="d">Build your own test: enter invoices and one payment, and they load into the shared workspace as a case like any other - the builder's run button loads and runs it, then opens Run Reconciliation with the full derivation on the match. Bring the case you think breaks it.</div>
 <div id="cb-invs"></div>
 <p><button class="btn ghost small" onclick="cbAddRow()">Add invoice row</button></p>
 <div class="grid2">
@@ -76,27 +71,22 @@
 </div>
 <p><button class="btn ghost small" onclick="cbCalcWire()">Auto-Calculate Valid Wire Total from Ticked Invoices</button> <small>Sums the ticked invoice rows, subtracts the claimed deduction, and fills the payment amount and references - so the case you build is one the solver can actually solve.</small></p>
 <p><button class="btn" onclick="cbRun(this)">Run my case</button></p><div id="cb-out"></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('upload')">Next Step: 03 Upload Center &#8594;</button></div>
+
 </section>
-<section id="upload"><div class="vhead"><div><div class="eyebrow">OPERATE — 03 / UPLOAD CENTER</div><h2>Upload Center</h2><div class="purpose">Invoices CSV, Payments CSV, and the Capture Agent remittance parser - three doors into the same workspace. The invoices file defines the ledger itself; the payments file stages wires and reconciles them in one call; only the remittance parser verifies its references against the open ledger before anything is staged.</div></div></div><div class="subhead">Upload &amp; capture - files, CSV and pasted remittance</div>
+<section id="upload"><div class="vhead"><div><div class="eyebrow">OPERATE — 03 / UPLOAD CENTER</div><h2>Upload Center</h2></div></div><div class="subhead">Upload &amp; capture - files, CSV and pasted remittance</div>
 
 
 <div id="handoff"></div>
 
-<div class="guide" onclick="this.classList.toggle('open')"><div class="ghead"><span class="tag">UPL</span><b>Component Guide - Upload Center</b><span>Expand guide</span></div><div class="gbody">
-<div class="gcol"><div class="h">What it is</div><p>Where real work enters: your invoice list and your bank payments, as CSV files, with automatic column matching and a list of any rows that failed.</p></div>
-<div class="gcol"><div class="h">How it is calculated</div><p>Column names are matched to our fields using a synonym list; the mapping used is shown to you. The file is fingerprinted (a hash of its column names) so the same layout is recognised next time. Payments are matched as soon as they are imported, using the current policy.</p></div>
-<div class="gcol"><div class="h">What it means</div><p>An import with no failed rows means your bank and ERP files already line up with our fields. Most first files do not - the quarantine list is exactly the list of what to fix.</p></div>
-<div class="gcol"><div class="h">What you can do</div><p>Drop a file, paste the CSV text, or start from the samples and templates. Fix failed rows in your source file and import again.</p></div></div></div>
 <div class="grid2">
-<div class="panel"><h3>1. Open invoices (AR ledger) <span data-info="upinv"></span></h3><div class="d">One row per open invoice, amounts in major units (e.g. 1250.00). Importing <b>replaces the workspace</b> by default - an invoices file is a whole ledger, not an addition. Use "Add to current ledger" only when the file is a second part of the same book (a subsidiary, a later extract).</div>
+<div class="panel"><h3>1. Open invoices (AR ledger)</h3><div class="d">One row per open invoice, amounts in major units (e.g. 1250.00). Importing <b>replaces the workspace</b> by default. Use "Add to current ledger" only for a second part of the same book.</div>
 <div class="drop" id="drop-inv"><div class="big">Drop an invoices file here, or click to choose</div><div class="small">CSV or text: invoice id, customer, amount, PO number, discount %, age, days to due. A dropped file imports as a new workspace.</div></div>
 <input type="file" id="file-inv" accept=".csv,.txt,text/csv,text/plain" style="display:none">
 <p><button class="btn ghost small" onclick="fillSample('inv')">Load sample invoices</button>
 <button class="btn ghost small" onclick="downloadTemplate('inv')">Download template</button></p>
 <textarea class="csv" id="csv-inv" rows="7" placeholder="Paste invoice CSV here, or drop a file above..."></textarea>
 <p><button class="btn" onclick="importInvoices(this,'replace')">Import as new workspace</button> <button class="btn ghost" onclick="importInvoices(this,'append')">Add to current ledger</button></p><div id="up-inv-out"></div></div>
-<div class="panel"><h3>2. Payments (bank / lockbox) <span data-info="uppay"></span></h3><div class="d">One row per received payment in a CSV; a single remittance advice in any other file. On CSV import, the workspace's whole staged set is reconciled - new wires join the active run, they never replace it.</div>
+<div class="panel"><h3>2. Payments (bank / lockbox)</h3><div class="d">One row per received payment in a CSV. On import, the workspace's staged payments are reconciled as one batch.</div>
 <div class="drop" id="drop-pay"><div class="big">Drop a payments file here, or click to choose</div><div class="small">A payments CSV, a remittance email (.txt / .eml), a PDF payment advice, or a screenshot (PNG / JPG) - the Capture Agent reads them all, and every reference is checked against the open ledger</div></div>
 <input type="file" id="file-pay" accept=".csv,.txt,.eml,.pdf,.png,.jpg,.jpeg,text/csv,text/plain,application/pdf,image/png,image/jpeg" style="display:none">
 <p><button class="btn ghost small" onclick="fillSample('pay')">Load sample payments</button>
@@ -104,9 +94,9 @@
 <textarea class="csv" id="csv-pay" rows="7" placeholder="Paste payment CSV here, or drop a file above..."></textarea>
 <p><button class="btn" onclick="importPayments(this)">Import and reconcile payments</button></p><div id="up-pay-out"></div></div>
 </div>
-<div class="panel"><h3>Remittance and wire input - the Capture Agent <span data-info="wirein"></span></h3>
-<div class="d">Step 01 of the agent. Paste any remittance email or wire advice - the moment text lands in the box, the parser reads it automatically and fills the wire card below. The verifier checks every reference against the open ledger, and the verified wire can be staged into this workspace, ready to reconcile in Run. Nothing is trusted on the AI's word alone.</div>
-<div class="wirecard"><div class="wlab">INBOUND WIRE AMOUNT <span data-info="wireamt"></span></div><div class="wireamt" id="wire-amt">not parsed yet</div><div class="wmeta" id="wire-meta">Paste a remittance below - it is analyzed automatically and the extracted wire appears here.</div><div id="wire-ded"></div></div>
+<div class="panel"><h3>Remittance and wire input - the Capture Agent</h3>
+<div class="d">Paste any remittance email or wire advice. Extraction starts automatically, and every reference is checked against the open ledger before the wire can be staged.</div>
+<div class="wirecard"><div class="wlab">INBOUND WIRE AMOUNT</div><div class="wireamt" id="wire-amt">not parsed yet</div><div class="wmeta" id="wire-meta">Paste a remittance below - it is analyzed automatically and the extracted wire appears here.</div><div id="wire-ded"></div></div>
 <textarea id="parse-in" rows="7">Hi team, remittance from Apex Manufacturing. Wire of $47,000.00 against INV-1001 and INV 1002. Less deduction $5,000.00 for shortage on delivery. PO-11 referenced.</textarea>
 <p><small>Tip: this sample references INV-1001 and INV-1002 from the demo case - load the demo case first, or paste your own buyer's email.</small></p>
 <div class="panel"><h3>AI extraction layer <span data-info="ailayer"></span></h3><div class="d" id="ai-strip">Checking which extraction engine is active...</div></div>
@@ -114,18 +104,17 @@
 <button class="btn ghost" id="stage-btn" onclick="stageParsed(this)" disabled>Stage this wire into the workspace</button>
 <button class="btn ghost" id="stage-run-btn" onclick="stageAndRun(this)" disabled>Stage and reconcile now</button></p>
 <div id="parse-out"></div></div>
-<div class="panel"><h3>Staged in this workspace <span data-info="uppay"></span></h3><div class="d">Payments currently staged in the active case, waiting to run or already settled. Imports land here first - nothing stays stranded on this page.</div><div id="up-staged"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('run')">Next Step: 04 Run Reconciliation &#8594;</button></div>
+<div class="panel"><h3>Staged in this workspace</h3><div class="d">Payments staged in the active case, waiting to run or already settled.</div><div id="up-staged"><div class="skl"><i></i><i></i><i></i></div></div></div>
+
 </section>
 <section id="run">
-<div class="vhead"><div><div class="eyebrow">OPERATE — 04 / RUN RECONCILIATION</div><h2>Run Reconciliation</h2><div class="purpose">Five agents execute in sequence on the active case; the sixth, Briefing, composes its summary on demand. The flagship match is already open below - its cash conservation derivation and the why-not counterfactual proof on screen, nothing buried behind a click.</div></div>
-<button class="howbtn" onclick="toggleHow('run')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for custom algorithms for matching and reconciliation. This page is that engine, running live on the active case.</div>
-<div class="how" id="how-run"><b>Step 1 - narrow the list:</b> for each payment, the engine first narrows the unpaid invoices using the evidence it has, in this order: invoice references in the remittance, then the purchase order, then OCR-repaired references, then an exact amount on the payer's own ledger, then a fuzzy payer-name match, and only then that customer's whole open ledger. The solver never searches beyond the paying customer's ledger. <b>Step 2 - solve:</b> the MILP solver picks the set of invoices whose total, after discounts and any accepted deduction, equals the payment exactly (the cash conservation equation). Among exact sets it prefers older invoices, and it treats any unexplained leftover (residual) as very costly - a penalty of 1,000,000 - so it would rather propose nothing than hide a difference. Open any match to see its invoices and a <b>why-not check</b> for an invoice it did not pick. An invoice used by one payment cannot be used again in the same batch, and sending the same batch twice replays the first result instead of posting twice.</div>
-<div class="panel" id="agent-panel"><h3>The agent team on this run <span data-info="agents"></span></h3>
+<div class="vhead"><div><div class="eyebrow">OPERATE — 04 / RUN RECONCILIATION</div><h2>Run Reconciliation</h2></div>
+</div>
+
+<div class="panel" id="agent-panel"><h3>The agent team on this run</h3>
 <div id="agent-pipe"><small>Run a batch and the five pipeline agents appear here with their measured timings; the Briefing agent composes on demand. Click any agent to inspect the payload it handed to the next.</small></div><div id="agent-inspect"></div>
 <details class="agentref"><summary>&#9432;&#65038; View 6-Agent Algorithms &amp; KPI Definitions &#9662;</summary><div class="d">Six named agents, each with its algorithm and the KPI it is judged on, printed in the open. Watch them work in the live lanes below.</div>
-<table><tr><th>Agent <span data-info="agents"></span></th><th>Algorithm <span data-info="jddem"></span></th><th>Judged on <span data-info="kpi"></span></th></tr>
+<table><tr><th>Agent</th><th>Algorithm</th><th>Judged on</th></tr>
 <tr><td><b>Capture Agent</b></td><td>LLM extraction (Gemini when keyed) + deterministic fallback, then a ledger verifier</td><td>References verified, zero invented</td></tr>
 <tr><td><b>Linking Agent</b></td><td>Exact references, PO match, OCR repair, amount-plus-payer, Jaro-Winkler fuzzy (0.88), whole-ledger fallback</td><td>Payments linked to the right customer</td></tr>
 <tr><td><b>Matching Agent</b></td><td>MILP under a cash conservation equation (HiGHS), Rust subset-sum kernel</td><td>Exact-match rate, residual zero</td></tr>
@@ -133,8 +122,8 @@
 <tr><td><b>Policy Agent</b></td><td>Expected-value dispute rule, maker-checker thresholds, tolerance write-off</td><td>Nothing posts past policy</td></tr>
 <tr><td><b>Briefing Agent</b></td><td>Grounded generation over run records (Gemini when keyed)</td><td>Every run ends with a brief and next actions</td></tr>
 </table></details></div>
-<div class="panel" id="staged-panel"><h3>Staged payments - the active case <span data-info="live"></span></h3>
-<div class="d">These are the payments of the case in the bar above, staged in the one shared workspace. Running settles them against the case's open ledger - and the Dashboard, Ledger, Approvals and Forecast all update from the same run.</div>
+<div class="panel" id="staged-panel"><h3>Staged payments - the active case</h3>
+<div class="d">Running settles these payments against the active ledger. Dashboard, Ledger, approvals and forecast update from the same run.</div>
 <div id="staged-box"><div class="skl"><i></i><i></i><i></i></div></div>
 <p><button class="btn" id="live-btn" onclick="runLive(this)">Run the active case live</button>
 <button class="btn ghost" onclick="runWorkspaceBatch(this)">Run without streaming</button>
@@ -143,51 +132,44 @@
 <div id="run-summary"></div>
 <div id="grade-out"></div>
 <div id="run-brief"></div>
-<div class="grid2" id="results-grid"><div class="panel"><h3>Matches <span data-info="matches"></span></h3><div id="matches"><small>Nothing run yet in this view.</small></div></div>
-<div class="panel"><h3>Exceptions <span data-info="expanel"></span></h3><div id="exceptions"><small>Exceptions from the run appear here, each with a recommended action.</small></div></div></div>
+<div class="grid2" id="results-grid"><div class="panel"><h3>Matches</h3><div id="matches"><small>Nothing run yet in this view.</small></div></div>
+<div class="panel"><h3>Exceptions</h3><div id="exceptions"><small>Exceptions from the run appear here, each with a recommended action.</small></div></div></div>
 <div id="match-detail"></div>
-<div class="guide" onclick="this.classList.toggle('open')"><div class="ghead"><span class="tag">RUN</span><b>Component Guide - Batch reconciliation</b><span>Expand guide</span></div><div class="gbody">
-<div class="gcol"><div class="h">What it is</div><p>One full pass of the real engine over a set of payments: narrow the candidates, solve the matches, judge deductions, and raise exceptions for the rest.</p></div>
-<div class="gcol"><div class="h">How it is calculated</div><p>For each payment: the candidate list narrows by reference, then PO, then OCR repair, then amount-plus-payer, then fuzzy payer name, then the customer's whole ledger. The solver then finds the invoice set that equals the payment exactly, preferring older invoices. The confidence rule and the auto-post rule are on the Methodology page, and every match shows its own worked calculation (its derivation).</p></div>
-<div class="gcol"><div class="h">What it means</div><p>AUTO_POSTED rows are finished work. PROPOSED rows are the agent asking a person to approve. Exceptions are the agent refusing to guess - each one says what to do next.</p></div>
-<div class="gcol"><div class="h">What you can do</div><p>Open any match to read its worked calculation and to test why another invoice was not picked. To change behaviour, edit the rules in Policy Studio and run again.</p></div></div></div>
-<div class="subhead">Held for sign-off - the maker-checker queue <button class="btn small ghost" style="margin-left:10px" onclick="openApprDrawer()">Open sign-off drawer</button></div><div class="panel"><h3>Maker-checker sign-off queue <span id="gov-count"></span> <span data-info="makerq"></span></h3><div class="d">Full width, on the page - approve individually, or post every solved held match in one action (an unmatched wire in the queue is decided on its own).</div><p><button class="btn" id="gov-approve-all" onclick="approveAllHeld(this)">Approve &amp; post all held matches</button></p><span class="pill warn" id="appr-count" style="display:none"></span>
-<div class="d">Matches the agent solved but would not post alone - because policy held them (for example the maker-checker threshold) or a person must sign - plus any wire the agent could not match at all, held here so a person decides its fate. Approving a match posts it; approving an unmatched wire parks it in suspense and issues no document. Rejecting records the decision and takes the item out of the queue. Every decision is written to the audit trail.</div>
-<div id="appr-out"><div class="skl"><i></i><i></i><i></i></div></div></div><div id="dispute-desk"></div><div class="nextstep"><button class="btn ghost" onclick="go('sap')">Next Step: 05 SAP BAPI & EBRR &#8594;</button></div>
+<div class="subhead">Held for sign-off - the maker-checker queue <button class="btn small ghost" style="margin-left:10px" onclick="openApprDrawer()">Open sign-off drawer</button></div><div class="panel"><h3>Maker-checker sign-off queue <span id="gov-count"></span></h3><div class="d">Full width, on the page - approve individually, or post every solved held match in one action (an unmatched wire in the queue is decided on its own).</div><p><button class="btn" id="gov-approve-all" onclick="approveAllHeld(this)">Approve &amp; post all held matches</button></p><span class="pill warn" id="appr-count" style="display:none"></span>
+<div class="d">Approving a solved match posts it and issues its SAP document. Approving an unmatched wire parks it in suspense and issues no document. Rejecting records the decision and removes the item. Every decision is written to the audit trail.</div>
+<div id="appr-out"><div class="skl"><i></i><i></i><i></i></div></div></div><div id="dispute-desk"></div>
 </section>
 
-<section id="sap"><div class="vhead"><div><div class="eyebrow">OPERATE — 05 / SAP BAPI &amp; EBRR</div><h2>SAP BAPI &amp; EBRR</h2><div class="purpose">Where cash application stops being a demo: the solver's own numbers, in the ERP's document shape. One balanced DZ clearing document per cleared payment, generated live by erp_sap.py, plus the ASC 606 / IFRS 15 dispute reserve for the run's claims.</div></div>
-<button class="howbtn" onclick="toggleHow('sap')">How this works</button></div><div class="how" id="how-sap"><b>Every document here is built from a stored match</b> - its derivation equation supplies the cash, discount and deduction amounts, so debits equal credits to the cent by construction, and the balanced flag is asserted on every document. No ERP is connected; the payload is the exact BAPI_ACC_DOCUMENT_POST structure an S/4HANA system would receive.</div><div id="sap-state"></div><div class="cards" id="sap-strip" style="grid-template-columns:repeat(4,1fr)"><div class="card"><div class="k">Documents generated</div><div class="v" id="sap-t-docs">-</div><div class="n">One DZ clearing document per cleared payment in the latest run</div></div><div class="card"><div class="k">Balanced journal total</div><div class="v" id="sap-t-total">-</div><div class="n">Total debits = total credits across the run's documents</div></div><div class="card"><div class="k">Document type</div><div class="v" style="font-size:16.5px;padding-top:7px">DZ - customer payment</div><div class="n">BAPI_ACC_DOCUMENT_POST, SAP S/4HANA shape</div></div><div class="card"><div class="k">ASC 606 dispute reserve</div><div class="v" id="sap-t-reserve">-</div><div class="n">Claims reclassified to disputed receivables (GL 121500), revenue untouched</div></div></div><div class="panel"><h3>Debit vs credit - the GL posting table <span data-info="gltable"></span></h3><div class="d">Pick a cleared payment; its journal is grouped by GL account below, and its full payload is open underneath.</div><div id="sap-chips"></div><div id="sap-table"><small>Run a case and its documents appear here.</small></div></div><div class="panel"><h3>BAPI_ACC_DOCUMENT_POST payload <span data-info="bapi"></span></h3><div class="d">The exact JSON the ERP would receive for the selected payment.</div><p><button class="btn ghost small" onclick="copySapPayload(this)">Copy payload</button></p><pre class="jsonbox" id="sap-payload">No document selected yet.</pre><div id="sap-note"></div></div><div class="panel"><h3>ASC 606 / IFRS 15 EBRR - dispute reserve journal <span data-info="ebrr"></span></h3><div id="sap-reserve"><small>No dispute claims in the latest run.</small></div></div><div class="nextstep"><button class="btn ghost" onclick="go('ledger')">Next Step: 06 Ledger &#8594;</button></div>
+<section id="sap"><div class="vhead"><div><div class="eyebrow">OPERATE — 05 / SAP BAPI &amp; EBRR</div><h2>SAP BAPI &amp; EBRR</h2><div class="purpose">Balanced DZ clearing documents and the ASC 606 dispute reserve, generated from stored matches. No live ERP is connected.</div></div>
+</div>
 </section>
 <section id="mail">
-<div class="vhead"><div><div class="eyebrow">INSIGHT & GOVERNANCE — 08 / OUTBOUND MAIL HUB</div><h2>Outbound Mail Hub</h2><div class="purpose">Every outcome of the agent, turned into the business document it should become: a recovery claim for a short-pay, an inquiry for an unidentified wire, a settlement confirmation for cleared cash, and dunning for what is still open. Drafts are composed from the run's own records - nothing here is a static sample.</div></div>
-<button class="howbtn" onclick="toggleHow('mail')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for agents that finish the work, not just the match. This hub is the finishing: each of the four mail categories is wired to a live data stream - the Deduction Agent, the exception queue, the settlement ledger, and the forecast's residual book.</div>
-<div class="how" id="how-mail"><b>Four streams, one hub.</b> Category 1 comes from the Deduction Agent's decisions in the latest run. Category 2 comes from that run's exceptions. Category 3 is generated by the run itself and by every maker-checker approval - a draft lands in the Outbox the moment cash clears, citing the SAP clearing document. Category 4 is the post-run residual ledger, segmented into dunning tones. <b>Honesty rule:</b> a draft is a draft. A mail is only marked sent when a configured mailbox's server accepts it; until then sends are recorded in the Outbox as recorded_not_sent, with the reason shown.</div>
+<div class="vhead"><div><div class="eyebrow">INSIGHT & GOVERNANCE — 08 / OUTBOUND MAIL HUB</div><h2>Outbound Mail Hub</h2></div>
+</div>
+
 <div id="mail-state"></div>
 <div class="mailtabs" id="mail-tabs"></div><div class="mailpanes"><div class="panel maillist"><div id="mail-list"><div class="skl"><i></i><i></i><i></i></div></div></div><div class="panel mailprev"><div id="mail-preview"><small>Pick a stream above - the first dispute claim opens itself.</small></div></div></div>
-<div class="panel"><h3>Outbox - generated, recorded and sent <span data-info="outbox"></span></h3><div class="d">Every draft the agents generate and every mail sent from this product, newest first, with its true status.</div><div id="mail-outbox"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('policy')">Next Step: 09 Policy Studio &#8594;</button></div>
+<div class="panel"><h3>Outbox - generated, recorded and sent</h3><div class="d">Every draft the agents generate and every mail sent from this product, newest first, with its true status.</div><div id="mail-outbox"><div class="skl"><i></i><i></i><i></i></div></div></div>
+
 </section>
-<section id="ledger"><div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 06 / LEDGER</div><h2>Ledger</h2><div class="purpose">The financial book: every open AR invoice and every staged payment, with inline cell editing. An edit never rewrites a stored match - it flags the case for a re-run, and the re-run is what changes the numbers.</div></div></div><div class="subhead">The two sides of the equation - open AR ledger &amp; staged wires</div>
+<section id="ledger"><div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 06 / LEDGER</div><h2>Ledger</h2></div></div><div class="subhead">The two sides of the equation - open AR ledger &amp; staged wires</div>
 
 
 
 <div class="cards" style="grid-template-columns:repeat(3,1fr)">
-<div class="card"><div class="k">Open invoices <span data-info="inv"></span></div><div class="v" id="l-count">-</div><div class="n">Across all customers</div></div>
-<div class="card"><div class="k">Open value <span data-info="openval"></span></div><div class="v" id="l-total">-</div><div class="n">Gross receivables awaiting cash</div></div>
-<div class="card"><div class="k">Overdue value <span data-info="overval"></span></div><div class="v" id="l-over">-</div><div class="n">Due date already passed</div></div>
+<div class="card"><div class="k">Open invoices</div><div class="v" id="l-count">-</div><div class="n">Across all customers</div></div>
+<div class="card"><div class="k">Open value</div><div class="v" id="l-total">-</div><div class="n">Gross receivables awaiting cash</div></div>
+<div class="card"><div class="k">Overdue value</div><div class="v" id="l-over">-</div><div class="n">Due date already passed</div></div>
 </div>
 <div class="panel"><div id="cube-out"></div>
 <div id="ledger-t"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="panel" id="ledger-staged-panel"><h3>Staged payments - wires waiting to run <span data-info="stagedwires"></span></h3><div class="d">The payments staged in the active case, which the next run reconciles against the ledger above. Once they have run, their matches and exceptions are on the Run page.</div><div id="ledger-staged"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('forecast')">Next Step: 07 Forecast and Collections &#8594;</button></div>
+<div class="panel" id="ledger-staged-panel"><h3>Staged payments - wires waiting to run</h3><div class="d">The payments staged in the active case, which the next run reconciles against the ledger above. Once they have run, their matches and exceptions are on the Run page.</div><div id="ledger-staged"><div class="skl"><i></i><i></i><i></i></div></div></div>
+
 </section>
 <section id="forecast">
-<div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 07 / FORECAST AND COLLECTIONS</div><h2>Forecast and Collections</h2><div class="purpose">When unpaid invoices are likely to turn into cash, and which customers to chase first. The forecast comes from the trained payment-delay model; the collections queue is a score combining amount, days overdue and predicted delay. The model's accuracy is shown on the Agent Health page.</div></div>
-<button class="howbtn" onclick="toggleHow('forecast')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for predictive forecasting, work prioritisation and anomaly identification. This page is all three, driven by the trained models and the money at risk.</div>
-<div class="how" id="how-forecast"><b>This page and the Ledger are the same data, seen two ways.</b> The Ledger lists every unpaid invoice. This page takes the invoices still open after the latest reconciliation - part-paid ones at their remaining balance - predicts when each one will be paid, and stacks them into weeks of expected cash - click any week to see the invoices inside it. For each invoice, the model predicts how many days the customer will take to pay, based on that customer's past behaviour, the amount, and the time of year. Sampling many possible payment dates around those predictions gives the weekly <b>P10 / P50 / P90 range</b> - a range a treasurer can plan against, instead of one made-up number. Cash expected after the 8-week horizon is not dropped: it sits in the <b>Beyond</b> row. The collections queue scores each invoice by money at risk: amount, days overdue, and predicted delay combined.</div>
+<div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 07 / FORECAST AND COLLECTIONS</div><h2>Forecast and Collections</h2><div class="purpose">Expected cash timing and collections priority from the post-reconciliation ledger.</div></div>
+</div>
+
 <div class="cards" id="fc-kpis" style="grid-template-columns:repeat(4,1fr)">
 <div class="card"><div class="k">Open receivables</div><div class="v" id="fc-k-open">-</div><div class="n">Every invoice still open after the latest reconciliation, at its remaining balance</div></div>
 <div class="card"><div class="k">Expected in 30 days</div><div class="v" id="fc-k-30">-</div><div class="n">Each invoice weighted by its chance of landing in 30 days</div></div>
@@ -196,83 +178,64 @@
 </div>
 <div id="fc-state"></div>
 <div class="grid2">
-<div class="panel"><h3>Cash-in forecast - next 8 weeks <span data-info="bands"></span></h3><div id="fc"><div class="skl"><i></i><i></i><i></i></div></div><div id="fc-drill"></div></div>
-<div class="panel"><h3>Collections priority queue <span data-info="collq"></span></h3><div id="col"><div class="skl"><i></i><i></i><i></i></div></div></div>
+<div class="panel"><h3>Cash-in forecast - next 8 weeks</h3><div id="fc"><div class="skl"><i></i><i></i><i></i></div></div><div id="fc-drill"></div></div>
+<div class="panel"><h3>Collections priority queue</h3><div id="col"><div class="skl"><i></i><i></i><i></i></div></div></div>
 </div>
 <div id="fc-disputes"></div>
-<div class="panel"><h3>Expected cash by customer <span data-info="custpanel"></span></h3><div id="fc-cust"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="panel"><h3>What-if - a customer pays earlier or later <span data-info="whatif"></span></h3>
+<div class="panel"><h3>Expected cash by customer</h3><div id="fc-cust"><div class="skl"><i></i><i></i><i></i></div></div></div>
+<div class="panel"><h3>What-if - a customer pays earlier or later</h3>
 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
 <label><small>Customer</small><br><select id="wi-cust" onchange="fcWhatif()"></select></label>
 <label style="flex:1;min-width:220px"><small>Shift: <b id="wi-lab">0 days</b> (negative = pays earlier)</small><br><input type="range" id="wi-shift" min="-21" max="21" step="1" value="0" style="width:100%" oninput="$('wi-lab').textContent=this.value+' days'" onchange="fcWhatif()"></label>
 </div>
 <div id="wi-out"><small>Pick a customer and move the slider. The forecast is recomputed from the same model and the same ledger - nothing is saved.</small></div></div>
-<div class="panel" id="mail-composer" style="display:none"><h3>Mail - collection reminder <span data-info="reminder"></span></h3>
+<div class="panel" id="mail-composer" style="display:none"><h3>Mail - collection reminder</h3>
 <div class="d">Drafted from the ledger row itself, so the amount and dates are the invoice's own. Review it, add the recipient, and send it from here. The send is recorded in the Outbox in the Outbound Mail Hub with its true status.</div>
 <label><small>To (accounts payable email)</small><br><input id="mc-to" style="width:100%" placeholder="ap@customer.com"></label>
 <label><small>Subject</small><br><input id="mc-subject" style="width:100%"></label>
 <textarea id="mc-body" rows="9" style="width:100%"></textarea>
 <p><button class="btn small" onclick="sendComposerMail(this)">Send reminder</button> <span id="mc-status"></span></p></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('mail')">Next Step: 08 Outbound Mail Hub &#8594;</button></div>
+
 </section>
-<section id="policy"><div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 09 / POLICY STUDIO</div><h2>Policy Studio</h2><div class="purpose">Governance on the main canvas, not in a drawer: every match the policy held, side by side with the thresholds that held it. Approving a match issues its SAP document, settles its invoices out of the forecast, and generates its settlement mail - in the same moment.</div></div>
-<button class="howbtn" onclick="toggleHow('policy')">How this works</button></div><div class="how" id="how-policy"><b>Maker-checker:</b> the solver proved these matches exactly, but policy held them for a second person - most often the amount threshold below, or a partial that needs a human eye. <b>Policy Studio</b> (right) holds the thresholds themselves: save a change and the next run obeys it; preview shows what the change would have done to the active run before you commit.</div><div><div><div class="subhead">Policy Studio - thresholds &amp; impact preview</div>
+<section id="policy"><div class="vhead"><div><div class="eyebrow">INSIGHT &amp; GOVERNANCE — 09 / POLICY STUDIO</div><h2>Policy Studio</h2><div class="purpose">The approval queue and the thresholds that govern automatic posting.</div></div>
+</div>
 
 
 
 <div class="panel"><div id="policy-form"><div class="skl"><i></i><i></i><i></i></div></div>
 <p><button class="btn" onclick="savePolicy(this)">Save policy</button> <button class="btn ghost" onclick="previewPolicy(this)">Preview impact on the active run</button> <small id="policy-src"></small></p><div id="policy-preview"></div></div>
 </div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('eval')">Next Step: 10 Evaluations &#8594;</button></div>
+
 </section>
 <section id="eval">
-<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 10 / EVALUATIONS</div><h2>Evaluations</h2><div class="purpose">Three lenses, all computed live. The active case graded against the answer it stated up front; the solver benchmarked against a simple baseline on labelled cases where the correct answer is known; and the ten scenario packs - full pipeline cases, each with its expectations stated before the run.</div></div>
-<button class="howbtn" onclick="toggleHow('eval')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for applied data science with results that can be measured. This page measures the solver against answers that were fixed before the run. The delay and validity models are graded on the Agent Health page.</div>
-<div class="how" id="how-eval">Each test case has a correct answer marked by a human: the invoices the payment truly settles. Both solvers get the same shortlist a real payment would get. <b>Accuracy</b> counts how often the solver's choice equals the marked answer; the <b>exact rate</b> counts answers that leave $0.00 unexplained. The greedy baseline is fast and sounds reasonable, but it fails when the right choice depends on age and deductions together - that is why real payments use the MILP solver. The scenario packs run the whole pipeline (resolution, solver, deduction judgement, policy) on ten stated cases, and every check must pass. The delay and validity models are graded separately, on the Agent Health page, against a held-out test set.</div>
+<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 10 / EVALUATIONS</div><h2>Evaluations</h2><div class="purpose">Solver and scenario checks against answers fixed before each run.</div></div>
+</div>
+
 <div id="eval-out"><div class="skl"><i></i><i></i><i></i></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('health')">Next Step: 11 Agent Health &#8594;</button></div>
+
 </section>
 <section id="health">
-<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 11 / AGENT HEALTH</div><h2>Agent Health</h2><div class="purpose">Is this deployment healthy, and how good are its models on data they never saw in training? This is the page an engineer or a diligence reviewer asks for.</div></div>
-<button class="howbtn" onclick="toggleHow('health')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for agent health dashboards that prove automation. This page is the proof: live status, model scores and the full audit trail.</div>
-<div class="how" id="how-health">The models are trained on synthetic history that contains a real, learnable pattern. They are then graded on later data they never saw (a time-ordered holdout): the delay model's average error against a naive baseline, and the validity model's AUC. What data the models were trained on is printed next to the scores. When real payment history is connected, the same tests retrain and re-grade them. The readiness checks confirm the database, data folder and models are working before the service takes traffic.</div>
+<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 11 / AGENT HEALTH</div><h2>Agent Health</h2><div class="purpose">Service readiness, model quality, diagnostics and audit trail.</div></div>
+</div>
+
 <div id="health-out"><div class="skl"><i></i><i></i><i></i></div></div>
-<div class="panel"><h3>Audit trail <span data-info="audit"></span></h3>
-<div class="d">Every consequential action in this workspace, in order: runs completed, matches approved or rejected, policy changes. Written by the server at the moment the action happens - it cannot be edited from this interface.</div>
+<div class="panel"><h3>Audit trail</h3>
+<div class="d">Runs, approvals, rejections and policy changes, written by the server when they occur. Entries cannot be edited from this interface.</div>
 <div id="audit-out"><div class="skl"><i></i><i></i><i></i></div></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('method')">Next Step: 12 Methodology &#8594;</button></div>
+
 </section>
 <section id="method">
-<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 12 / METHODOLOGY</div><h2>Methodology</h2><div class="purpose">Every formula behind every number in this product, in one place. The API serves this page from the same code that does the calculations. Open any match to see the same formulas with that run's real values filled in.</div></div></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for algo-first thinking on NP-hard problems, like Knapsack and MILP. This page shows the exact maths behind every match, in full.</div>
+<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 12 / METHODOLOGY</div><h2>Methodology</h2><div class="purpose">Formulas and definitions used by the live product.</div></div></div>
 <div id="method-out"><div class="skl"><i></i><i></i><i></i></div></div>
-<div class="nextstep"><button class="btn ghost" onclick="go('arch')">Next Step: 13 Architecture &#8594;</button></div>
+
 </section>
 <section id="arch">
-<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 13 / ARCHITECTURE</div><h2>Architecture</h2><div class="purpose">How the product is built, layer by layer. Each layer names the real technology used in this deployment.</div></div>
-<button class="howbtn" onclick="toggleHow('arch')">How this works</button></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for system design, distributed-systems thinking, functional programming in Rust and OOP in Python. This page maps each part of the system to the technology that runs it.</div>
-<div class="how" id="how-arch"><b>Reading this page:</b> the flow is the request path of a single payment, top to bottom. The component table names the module responsible for each stage in the shipped codebase - nothing here is aspirational; the roadmap items are labelled as roadmap on the Product Thinking page, not drawn as if they exist.</div>
-<div class="panel"><h3>Kernel and test suite health <span data-info="kernelhealth"></span></h3><div class="d">Checked live on this server - the Rust kernel's presence, a live equivalence probe against the Python reference, and the repository suite that CI runs on every push.</div><div id="diag-body-arch"><div class="note">Loading live diagnostics...</div></div></div>
-<div class="panel"><h3>Built against the Agent Product Builder JD <span data-info="jdreq"></span></h3>
-<div class="d">This product was built for one job description: Agent Product Builder at HighRadius, Hyderabad (job IDs 7734235003 and 7734268003). The table keeps it simple - what the JD asks, where that thing lives in this product, and the tech behind it in one line. The full detail sits on the pages named, working live. Nothing here is a separate demo.</div>
-<table><tr><th style="width:30%">What the JD asks <span data-info="jdreq"></span></th><th style="width:24%">Where it lives here <span data-info="jdsee"></span></th><th>The tech, in one line <span data-info="jdimp"></span></th></tr>
-<tr><td>Build autonomous agents for the CFO's office, aiming at 90%+ automation</td><td>Run Reconciliation, Dashboard</td><td>A pipeline of named steps matches payments on its own; people only see what policy holds back. The automation rate is measured on every run, not claimed.</td></tr>
-<tr><td>Transform big finance data, LiveCube-style</td><td>Upload Center</td><td>Files in any layout are mapped to one clean format. Bad rows are listed with the reason, never dropped in silence.</td></tr>
-<tr><td>Process unstructured data: parsing, matching, reconciliation</td><td>Remittance Parser, Run Reconciliation</td><td>AI reads the email, a checker verifies every reference against the ledger, then the solver matches the money.</td></tr>
-<tr><td>Forecasting, work prioritisation, anomaly identification</td><td>Forecast and Collections, match evidence</td><td>Trained models predict pay dates and build cash-in ranges; z-scores flag strange deductions; every queue is sorted by money at risk.</td></tr>
-<tr><td>Algo-first thinking: NP-hard problems (Knapsack, MILP)</td><td>Methodology, every match's derivation</td><td>Matching is written as a MILP with one cash conservation equation and solved exactly with HiGHS, in whole cents.</td></tr>
-<tr><td>Functional programming, preferably Rust</td><td>Architecture (components)</td><td>The subset-sum kernel is pure Rust functions, proven equal to the Python solver on 203 shared test cases.</td></tr>
-<tr><td>OOP in Python</td><td>Architecture (components)</td><td>The backend is typed domain models, a repository layer and small services, served by FastAPI.</td></tr>
-<tr><td>System design and distributed systems</td><td>Agent Health, this page</td><td>One database per tenant, hashed API keys, role-based access, rate limits and health gates. The state of record lives in those databases, not in process memory, so service tasks are interchangeable and can scale out.</td></tr>
-<tr><td>Agent health dashboards that prove automation</td><td>Agent Health, Dashboard, Evaluations</td><td>Every number comes from stored runs and live model checks - the proof and the product are the same numbers.</td></tr>
-<tr><td>Full-lifecycle ownership, PRD to deployment</td><td>Product Thinking</td><td>PRD, architecture, code, tests, Docker packaging and this live deployment on AWS - all in one repository.</td></tr>
-</table>
-<p><small>One JD line is not in this table: the academic record. Software cannot manufacture that, so it is not claimed anywhere in this product. It is answered by the application itself.</small></p></div>
-<div class="panel"><h3>Request path of one payment <span data-info="reqpath"></span></h3>
-<table><tr><th style="width:60px">Step <span data-info="step"></span></th><th style="width:260px">Stage <span data-info="stage"></span></th><th>What happens <span data-info="whathappens"></span></th></tr>
+<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 13 / ARCHITECTURE</div><h2>Architecture</h2><div class="purpose">The deployed system, layer by layer.</div></div>
+</div>
+
+<div class="panel"><h3>Kernel and test suite health</h3><div class="d">Checked live on this server - the Rust kernel's presence, a live equivalence probe against the Python reference, and the repository suite that CI runs on every push.</div><div id="diag-body-arch"><div class="note">Loading live diagnostics...</div></div></div>
+<div class="panel"><h3>Request path of one payment</h3>
+<table><tr><th style="width:60px">Step</th><th style="width:260px">Stage</th><th>What happens</th></tr>
 <tr><td>1</td><td>Ingestion + transform</td><td>CSV, PDF, image or API input is normalised to the canonical schema: synonym header mapping, source fingerprinting, row quarantine with reasons, OCR on image remittances. Remittance text goes to the parser (Gemini when configured, a deterministic parser otherwise, with the mode shown) and every extracted reference is verified against the open ledger.</td></tr>
 <tr><td>2</td><td>Candidate resolution</td><td>The ledger narrows down an evidence ladder: exact reference, purchase order, OCR-repaired reference, amount-plus-payer, fuzzy payer name, then the customer's whole ledger. Duplicate wires are fingerprinted (payer, amount, currency) and stopped before matching, and candidates are hard-filtered to the payment's own currency.</td></tr>
 <tr><td>3</td><td>MILP solver (HiGHS via scipy)</td><td>Subset selection under the cash conservation equality with the age-weighted, penalty-priced objective from the Methodology page. A Rust subset-sum kernel runs inside the solve path: it decides a payment only when its exact set is provably unique (bounded at 18 candidates), and every set the MILP returns is re-verified in exact integer cents before it is believed. Kernel and Python path are equivalence-tested on 203 shared cases.</td></tr>
@@ -281,8 +244,8 @@
 <tr><td>6</td><td>Insight layer</td><td>Delay and validity models (scikit-learn, time-ordered holdout) work from the post-reconciliation residual ledger only - settled and part-paid money is never double-counted - and feed the forecast bands (400-simulation Monte Carlo, P10/P50/P90) and the collections queue; the copilot answers only from these stored records.</td></tr>
 </table></div>
 <div class="grid2">
-<div class="panel"><h3>Platform components <span data-info="platcomp"></span></h3><table>
-<tr><th>Component <span data-info="comp"></span></th><th>Technology <span data-info="tech"></span></th></tr>
+<div class="panel"><h3>Platform components</h3><table>
+<tr><th>Component</th><th>Technology</th></tr>
 <tr><td>API + product UI</td><td>FastAPI (Python 3.12); the UI is one page shell plus a stylesheet and four plain-script modules; OpenAPI at /docs</td></tr>
 <tr><td>Solvers</td><td>scipy.optimize.milp (HiGHS) + Rust kernel in the solve path for provably-unique exact sets (equivalence-tested on 203 cases)</td></tr>
 <tr><td>Data</td><td>SQLite (WAL), database-per-tenant isolation; Postgres-compatible schema discipline</td></tr>
@@ -294,22 +257,22 @@
 <tr><td>Explainers</td><td>Every metric on every page carries an info toggle with a three-part explanation (what it is, how it is computed, why it matters) - 139 explanations ship with the UI</td></tr>
 <tr><td>Packaging</td><td>Multi-stage Docker (Rust stage + slim runtime with the test suite and tesseract OCR), non-root, $PORT-aware; deploys to AWS ECS Express</td></tr>
 </table></div>
-<div class="panel"><h3>Design rules that hold the system together <span data-info="designrules"></span></h3>
+<div class="panel"><h3>Design rules that hold the system together</h3>
 <p style="font-size:13.5px;line-height:1.7"><b>1. AI proposes, math decides.</b> No LLM output can post cash; it can only propose fields that deterministic components verify.<br>
 <b>2. Money is integer cents.</b> No floats anywhere near a posting; residuals are exact, never rounding artefacts.<br>
 <b>3. Every decision carries its derivation.</b> If a number cannot be recomputed from records the product shows, it is not shown.<br>
 <b>4. Exceptions are a workflow, not a failure.</b> The tail is where analysts earn their keep, so it is designed first-class: counterfactuals, recommended actions, audit trail.<br>
 <b>5. Policy is configuration.</b> Thresholds that change behaviour live in tenant policy, versioned with each run - never buried in code.</p></div>
 </div>
-<div class="panel"><h3>Deployment topology - this exact demo <span data-info="platcomp"></span></h3>
-<table><tr><th style="width:260px">Hop <span data-info="stage"></span></th><th>What happens <span data-info="whathappens"></span></th></tr>
+<div class="panel"><h3>Deployment topology - this exact demo</h3>
+<table><tr><th style="width:260px">Hop</th><th>What happens</th></tr>
 <tr><td>Browser → AWS Application Load Balancer (HTTPS)</td><td>The web UI and the JSON API are served by the same container; the load balancer terminates TLS on the <code>*.ecs.ap-south-1.on.aws</code> hostname.</td></tr>
 <tr><td>ALB → ECS Express task (Fargate, 0.25 vCPU / 1 GB, ap-south-1)</td><td>Auto-scaling is capped at 3 tasks as a credit guard. The health-check path is /health; /ready gates traffic on the control database, data directory and models.</td></tr>
 <tr><td>Container → per-tenant SQLite stores</td><td>One database file per tenant under the data directory (container-local in this demo posture, so data resets on redeploy and is re-seeded in one click; the schema discipline is Postgres-compatible for the production path).</td></tr>
 <tr><td>CI: GitHub push → Actions → ECR → Update service</td><td>Every push to main first runs the test gate (146 pytest tests plus the Rust kernel's cargo tests); only a green run builds the multi-stage image and pushes it to ECR, tagged with the commit SHA as well as latest, and the service update rolls it out. Logs stream to CloudWatch; /metrics exposes Prometheus counters.</td></tr>
 </table></div>
-<div class="panel"><h3>Data model <span data-info="platcomp"></span></h3>
-<table><tr><th style="width:260px">Table <span data-info="field"></span></th><th>What it holds <span data-info="whathappens"></span></th></tr>
+<div class="panel"><h3>Data model</h3>
+<table><tr><th style="width:260px">Table</th><th>What it holds</th></tr>
 <tr><td>tenants / api_keys (control DB)</td><td>Tenant registry and SHA-256-hashed API keys with roles. Raw keys are shown once at issue and never stored.</td></tr>
 <tr><td>invoices / payments (per tenant)</td><td>The canonical ledger and the staged payments of the active case - the shared workspace every view reads.</td></tr>
 <tr><td>runs / run_steps / matches / exceptions</td><td>Every batch, its streamed step log, the solver's decisions with full derivations, and the payments the agent refused to settle alone.</td></tr>
@@ -320,15 +283,15 @@
 <tr><td>outbox</td><td>Every mail the product composed or sent, with its true status: sent, failed, or recorded_not_sent with the reason.</td></tr>
 </table></div>
 <div class="grid2">
-<div class="panel"><h3>Scaling the solver <span data-info="designrules"></span></h3>
-<table><tr><th>Question <span data-info="field"></span></th><th>Answer <span data-info="whathappens"></span></th></tr>
+<div class="panel"><h3>Scaling the solver</h3>
+<table><tr><th>Question</th><th>Answer</th></tr>
 <tr><td>Why doesn't the MILP explode?</td><td>The solver never sees the ledger. Candidate resolution prunes each payment to a payer-scoped shortlist first (references, PO, OCR-repaired references, amount-plus-payer, fuzzy payer, whole ledger), so the NP-hard core runs on a handful of invoices per payment, not thousands.</td></tr>
 <tr><td>Raw vs pruned</td><td>A 20-invoice pool has 2^20 (about a million) raw subsets; resolution prunes each payment to a short, payer-scoped shortlist first, and HiGHS branch-and-bound closes the rest. The enumeration and kernel fast paths are bounded at 18 candidates, which keeps the worst case small and provable.</td></tr>
 <tr><td>Latency evidence</td><td>Solver time is stored on every match; the Dashboard ribbon averages it for the latest run. The live run streams each payment's solve time as it happens.</td></tr>
 <tr><td>Equivalence</td><td>The Rust kernel and the Python solver are proven identical on 203 shared cases; neither is trusted on its own say-so.</td></tr>
 </table></div>
 <div class="panel"><h3>Where AI plugs in - and where it never does <span data-info="ailayer"></span></h3>
-<table><tr><th style="width:170px">Component <span data-info="comp"></span></th><th>Role of AI <span data-info="whathappens"></span></th></tr>
+<table><tr><th style="width:170px">Component</th><th>Role of AI</th></tr>
 <tr><td>Remittance parser</td><td>Gemini extraction with schema-bound JSON when a server key is configured; deterministic extractor otherwise. Either way, a verifier checks every reference against the ledger before anything is trusted.</td></tr>
 <tr><td>Copilot</td><td>Answers only from the product's own records, with citations. Questions outside the records are refused, not improvised.</td></tr>
 <tr><td>Delay and validity models</td><td>Trained ML (holdout-graded) predicts payment timing and deduction validity; it informs forecasts and triage. It decides nothing about posting.</td></tr>
@@ -336,14 +299,13 @@
 <tr><td>Current status</td><td>Which parser runs is set by the server environment, not the code: Gemini when a key and model are configured - as on the live deployment - and the deterministic parser otherwise. Agent Health and the Upload Center always show the active mode, and switching needs no other change.</td></tr>
 </table></div>
 </div>
-<div class="nextstep"><button class="btn ghost" onclick="go('product')">Next Step: 14 Product Thinking &#8594;</button></div>
+
 </section>
 <section id="product">
-<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 14 / PRODUCT THINKING</div><h2>Product Thinking</h2><div class="purpose">Why SlateMatch is built the way it is - the problem, the design rules, and where it goes next.</div></div></div>
-<div class="jdnote"><b>JD LINK</b>The role asks for full-lifecycle ownership - PRD to code to deployment - and first-principles problem solving. This page is that thinking, written in the open.</div>
-<div class="panel"><h3>Success criteria this product would contract on <span data-info="masc"></span></h3>
+<div class="vhead"><div><div class="eyebrow">EVALS &amp; ARCHITECTURE — 14 / PRODUCT THINKING</div><h2>Product Thinking</h2><div class="purpose">Product rationale, success criteria and roadmap.</div></div></div>
+<div class="panel"><h3>Success criteria this product would contract on</h3>
 <div class="d">HighRadius now sells on outcomes, settled against Mutually Agreed Success Criteria. These are the criteria SlateMatch would sign, each measurable inside this product today:</div>
-<table><tr><th>Criterion <span data-info="masc"></span></th><th>Target <span data-info="kpi"></span></th><th>Where it is measured <span data-info="jdsee"></span></th></tr>
+<table><tr><th>Criterion</th><th>Target</th><th>Where it is measured</th></tr>
 <tr><td>Invoice-line touchless rate</td><td>Above 80% (top third of the market)</td><td>Dashboard impact panel, from stored runs</td></tr>
 <tr><td>Median market band (Hackett 2025)</td><td>70% auto-match is the market median - the line to beat</td><td>Shown beside our measured rate, never blended with it</td></tr>
 <tr><td>Exception ageing</td><td>Every exception carries an owner action the day it appears</td><td>Run view exception panel + agent brief</td></tr>
@@ -351,7 +313,7 @@
 <tr><td>Cost per remittance</td><td>Vendor claim for manual processing is up to $7.82 - automation must cost a fraction</td><td>Impact panel hours-returned estimate</td></tr>
 </table></div>
 <div class="panel" style="max-width:860px">
-<h3>Product thesis <span data-info="prodthesis"></span></h3>
+<h3>Product thesis</h3>
 <div class="ptgrid">
 <div class="ptcell"><div class="ptnum">01/</div><div class="ptlab">The problem</div><p>Cash application is a conservation problem with an information problem on top: every cent received must land somewhere auditable, but the evidence arrives as messy remittance text, short pays and silent deductions. Incumbent platforms advertise 85 to 99 percent auto-match, yet implementations run for months and the exception tail still eats the analyst day. The tail is the product opportunity.</p></div>
 <div class="ptcell"><div class="ptnum">02/</div><div class="ptlab">The design rule</div><p>AI proposes, math decides. Probabilistic components (LLM parsing, ML delay and validity models) extract and score; deterministic components (the MILP solver under a cash conservation equation, the policy engine, the expected-value dispute rule) make every posting decision. Anything unreconciled becomes a tracked exception with counterfactuals - never a silent write-off.</p></div>
@@ -370,10 +332,10 @@
 <div id="cmdk"><div class="cmdk-box"><input id="cmdk-in" type="text" placeholder="Jump to a view, or run an action..." autocomplete="off"><div id="cmdk-list"></div><div style="padding:8px 14px;border-top:1px solid var(--line);font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--mut2)">↑↓ NAVIGATE · ENTER SELECT · ESC CLOSE</div></div></div>
 <div id="keymodal"><div class="keymodal-box"><h3 style="margin:0 0 8px">Access key</h3><div class="d" style="margin-bottom:12px">This deployment is locked with API keys. Paste the key issued for your workspace and this browser will send it with every request. The key is stored only in this browser - the server keeps only a hash of it. The bootstrap key does not belong here; it only mints workspace keys.</div><input id="key-input" type="password" placeholder="Paste your API key" autocomplete="off" onkeydown="if(event.key==='Enter')saveApiKey()"><div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end"><button class="btn small ghost" id="key-remove" onclick="removeApiKey()" style="display:none">Remove key</button><button class="btn small ghost" onclick="closeKeyModal(false)">Cancel</button><button class="btn small" onclick="saveApiKey()">Save key</button></div></div></div>
 <div id="toast"></div>
-<script src="js/state.js?v=56"></script>
-<script src="js/operate.js?v=56"></script>
-<script src="js/insight.js?v=56"></script>
-<script src="js/assist.js?v=56"></script>
+<script src="js/state.js?v=57"></script>
+<script src="js/operate.js?v=57"></script>
+<script src="js/insight.js?v=57"></script>
+<script src="js/assist.js?v=57"></script>
 <button id="chatfab" onclick="toggleChat()" title="Ask the assistant - answers only from this workspace's records" aria-label="Open assistant chat"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></button>
 <div id="chatpanel" hidden>
   <div class="cp-head"><b>Assistant</b><span>Answers only from this workspace's records - runs, matches, exceptions, evaluations. If the records cannot answer, it says so.</span><button onclick="toggleChat()" aria-label="Close assistant chat">&#10005;</button></div>

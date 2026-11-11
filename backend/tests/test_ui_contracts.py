@@ -112,7 +112,7 @@ def test_smooth_layer_contract():
     navigation + optimistic decisions wired in the scripts, and the CSS
     primitives (spinner, skeleton, row flash) present."""
     html = client.get("/").text
-    assert 'id="loadbar"' in html and 'class="lens-off boot"' in html
+    assert 'id="loadbar"' in html and 'class="boot"' in html
     assert "<small>Loading" not in html
     js = client.get("/js/state.js").text
     for token in ["slate-brief", "Escape", "jumpToApprovals", "LOADED_GEN",
@@ -154,10 +154,10 @@ def test_sections_are_siblings_never_nested():
 def test_v31_staged_lifecycle_contract():
     """v31: loading stages, execution is explicit and visible. The shell
     carries the readiness/gate helpers, the persistent agent strip with
-    per-agent counts, Next Step footers, the live-proof mutation, the
-    quota-safe AI framing, and v31 cache-bust stamps."""
+    per-agent counts, the live-proof mutation, the quota-safe AI framing,
+    and the current cache-bust stamps (v57 since the explanation pass)."""
     html = client.get("/").text
-    assert 'css/livecube.css?v=56' in html and 'js/state.js?v=56' in html
+    assert 'css/livecube.css?v=57' in html and 'js/state.js?v=57' in html
     # v32 declutter: no standalone Load demo case button anywhere, and the
     # author credit sits above the nav so it can never clip items 12-14
     assert '>Load demo case</button>' not in html
@@ -166,7 +166,8 @@ def test_v31_staged_lifecycle_contract():
     # 12-14 are reachable and can never sit under the credit
     assert html.index('</nav>') < html.index('builtby') < html.index('</header>')
     assert '<details class="agentref">' in html
-    assert html.count('class="nextstep"') == 13
+    # v57 explanation pass: the Next Step tour footers are gone.
+    assert html.count('class="nextstep"') == 0
     js = ""
     import os
     fe = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "js")
@@ -194,3 +195,39 @@ def test_v31_staged_lifecycle_contract():
     assert pol["held_breakdown"] == {"maker_checker_cap": 2, "other_proposed": 3}
     mat = agents["Matching Agent"]["evidence"]
     assert "rust_kernel" in mat and mat["rust_kernel"]["bridge"] == "rust_bridge.py"
+
+
+def test_v57_explanation_diet_contract():
+    """v57: production screens keep only explanations that change a
+    decision, explain a derived number, disclose a limitation or show
+    decision evidence. Tour and hiring surfaces are gone: no How panels,
+    no component guides, no JD banners or lens, no Next Step footers.
+    Info icons survive only on metric, model, decision and evidence
+    keys - never on ordinary nouns like payment, invoice or amount."""
+    html = client.get("/").text
+    for token in ('class="how"', 'class="howbtn"', 'class="guide"',
+                  'class="gcol"', 'class="gbody"', "What it is",
+                  'class="jdnote"', 'class="nextstep"', 'id="lens-btn"',
+                  "JD LINK", "How this works",
+                  "Built against the Agent Product Builder JD"):
+        assert token not in html, token
+    js = ""
+    for f in ("state.js", "operate.js", "insight.js", "assist.js"):
+        js += client.get(f"/js/{f}").text
+    combined = html + js
+    # kept: decision and metric explanations still resolve in the UI
+    for key in ("conf", "resid", "decision", "rung", "winprob", "exprec",
+                "p10", "p50", "p90", "parsefld", "milpacc", "mae", "auc"):
+        assert f'data-info="{key}"' in combined, key
+    # removed: noun and JD explanations never come back
+    for key in ("payid", "invid", "cust", "amt", "gross", "disc",
+                "jdreq", "jdsee", "masc", "impact", "savesess"):
+        assert f'data-info="{key}"' not in combined, key
+    # the dictionary itself is pruned, and the four dashboard SPECS
+    # (including the SAP and solver cards) all survive
+    operate = client.get("/js/operate.js").text
+    for key in ("touch", "mode", "sap", "solver"):
+        assert f"\n  {key}:[" in operate, key
+    assert "Solver Engine - HiGHS MILP" in operate
+    for key in ("payid", "jdreq", "masc", "agents", "cube"):
+        assert f"\n  {key}:[" not in operate, key

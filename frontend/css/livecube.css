@@ -468,3 +468,8 @@ details.agentref table{margin-top:10px}
 .keymodal-box{max-width:480px;margin:14vh auto 0;background:#262626;border:1px solid #3a3a3c;border-radius:6px;box-shadow:0 28px 70px rgba(0,0,0,.65);padding:20px;animation:fadeUp .25s ease}
 .keymodal-box input{width:100%;background:#1d1d1f;border:1px solid var(--line2);color:#fff;font:inherit;font-size:14px;padding:11px 12px;outline:none;box-sizing:border-box}
 .keymodal-box input:focus{border-color:var(--blue)}
+
+/* v57 production pass: no decorative rain in the workspace, and spec
+   cards never overflow a small screen. */
+.rain{display:none!important}
+.speccard{max-width:calc(100vw - 40px)}

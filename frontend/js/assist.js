@@ -158,8 +158,8 @@ async function savePolicy(btn){
 
 async function loadMethod(){
   try{const d=await api("/api/v1/methodology");
-    $("method-out").innerHTML=d.sections.map(sec=>`<div class="panel"><h3>${esc(sec.title)} <span data-info="methodsec"></span></h3><div class="d">${esc(sec.what)}</div>
-    <table><tr><th style="width:230px">Component <span data-info="comp"></span></th><th>How it is computed <span data-info="howcomputed"></span></th></tr>${sec.formulae.map(f=>`<tr><td><b>${esc(f.name)}</b></td><td style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">${esc(f.expr)}</td></tr>`).join("")}</table>
+    $("method-out").innerHTML=d.sections.map(sec=>`<div class="panel"><h3>${esc(sec.title)}</h3><div class="d">${esc(sec.what)}</div>
+    <table><tr><th style="width:230px">Component</th><th>How it is computed</th></tr>${sec.formulae.map(f=>`<tr><td><b>${esc(f.name)}</b></td><td style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">${esc(f.expr)}</td></tr>`).join("")}</table>
     <p style="font-size:13.5px;line-height:1.6"><b>What it means:</b> ${esc(sec.meaning)}</p></div>`).join("");
   }catch(e){toast(e.message)}
 }
@@ -305,7 +305,7 @@ async function loadApprovals(){
     const badge=$("appr-count");
     if(badge){badge.style.display=list.length?"":"none"; badge.textContent=list.length+" waiting"}
     __apprN=list.length;
-    out.innerHTML=list.length?`<table><tr><th>Payment <span data-info="payid"></span></th><th>Amount <span data-info="amt"></span></th><th>Matched invoices <span data-info="lines"></span></th><th>Conf. <span data-info="conf"></span></th><th>Why it is held <span data-info="held"></span></th><th>Decision <span data-info="apprdec"></span></th></tr>${list.map(a=>{const refusal=!(a.invoices||[]).length;return `<tr><td>${esc(a.payment_id)}<br><small>${esc(a.run_id)}</small></td><td>${a.amount_cents==null?"-":money(a.amount_cents)}</td><td>${refusal?pill("Refusal - no invoices matched","warn"):a.invoices.map(esc).join(", ")}</td><td>${Number(a.confidence).toFixed(2)}</td><td style="max-width:340px">${esc(a.decision_reason||"Held for review")}</td><td style="white-space:nowrap">${refusal?`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Park in suspense GL</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Send back</button>`:`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Approve and post</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Reject</button>`}</td></tr>`}).join("")}</table>${list.some(a=>!(a.invoices||[]).length)?`<small>A refusal is the solver's verdict that nothing in the ledger explains the wire. It can never be posted - there is no document behind it. Park it in unapplied suspense (the remittance chase is already drafted in the Mail Hub) or send it back for manual allocation.</small>`:""}`:"<small>Nothing waiting. Matches appear here when policy holds one - lower the maker-checker threshold in Policy Studio and run a batch to see it work.</small>";
+    out.innerHTML=list.length?`<table><tr><th>Payment</th><th>Amount</th><th>Matched invoices</th><th>Conf. <span data-info="conf"></span></th><th>Why it is held</th><th>Decision</th></tr>${list.map(a=>{const refusal=!(a.invoices||[]).length;return `<tr><td>${esc(a.payment_id)}<br><small>${esc(a.run_id)}</small></td><td>${a.amount_cents==null?"-":money(a.amount_cents)}</td><td>${refusal?pill("Refusal - no invoices matched","warn"):a.invoices.map(esc).join(", ")}</td><td>${Number(a.confidence).toFixed(2)}</td><td style="max-width:340px">${esc(a.decision_reason||"Held for review")}</td><td style="white-space:nowrap">${refusal?`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Park in suspense GL</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Send back</button>`:`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Approve and post</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Reject</button>`}</td></tr>`}).join("")}</table>${list.some(a=>!(a.invoices||[]).length)?`<small>A refusal is the solver's verdict that nothing in the ledger explains the wire. It can never be posted - there is no document behind it. Park it in unapplied suspense (the remittance chase is already drafted in the Mail Hub) or send it back for manual allocation.</small>`:""}`:"<small>Nothing waiting. Matches appear here when policy holds one - lower the maker-checker threshold in Policy Studio and run a batch to see it work.</small>";
   }catch(e){out.innerHTML=`<small>Could not load approvals: ${esc(e.message)}</small>`}
   return __apprN;
 }
@@ -428,7 +428,7 @@ async function renderFcDisputes(){
     const claims=ms.map(m=>({m, d:(m.result||{}).deduction})).filter(x=>x.d&&x.d.autonomous_action==="AUTO_GENERATE_DISPUTE_CLAIM")
       .sort((a,b)=>Number(b.d.expected_recovery_value_usd||0)-Number(a.d.expected_recovery_value_usd||0));
     if(!claims.length){ el.innerHTML=""; return }
-    el.innerHTML=`<div class="panel"><h3>Dispute priority - from the active run <span data-info="dispprio"></span></h3><div class="d">The Deduction Agent flagged these short-pays during reconciliation. They sit at the top of the collections work because the money is recoverable: expected recovery is win probability x claim, minus the cost of fighting. One click takes you to the claim on the Dispute desk, draft ready.</div>
+    el.innerHTML=`<div class="panel"><h3>Dispute priority - from the active run</h3><div class="d">The Deduction Agent flagged these short-pays during reconciliation. They sit at the top of the collections work because the money is recoverable: expected recovery is win probability x claim, minus the cost of fighting. One click takes you to the claim on the Dispute desk, draft ready.</div>
     <table><tr><th>Payment</th><th>Payer</th><th>Claim <span data-info="claimamt"></span></th><th>Reason</th><th>Win probability <span data-info="winprob"></span></th><th>Expected recovery <span data-info="exprec"></span></th><th></th></tr>${claims.map(({m,d})=>`<tr><td>${esc(m.payment_id)}</td><td>${esc(d.payer||"")}</td><td>${money(d.claimed_cents||0)}</td><td>${esc(d.assigned_erp_reason_code||"")} - ${esc((d.classification||{}).label||"deduction")}</td><td>${d.win_probability}</td><td><b>$${Number(d.expected_recovery_value_usd||0).toLocaleString("en-US",{maximumFractionDigits:2})}</b></td><td><button class="btn small" data-pid="${esc(m.payment_id)}" onclick="dispatchClaim(this.dataset.pid)">Dispatch dispute email &rarr;</button></td></tr>`).join("")}</table></div>`;
     fillInfo();
   }catch(e){}
@@ -443,7 +443,7 @@ async function loadAudit(){
   const out=$("audit-out"); if(!out)return;
   try{
     const list=await api("/api/v1/audit");
-    out.innerHTML=list.length?`<table><tr><th>When (UTC) <span data-info="when"></span></th><th>Actor <span data-info="actor"></span></th><th>Action <span data-info="action"></span></th><th>Record <span data-info="rec"></span></th><th>Detail <span data-info="detail"></span></th></tr>${list.slice(0,30).map(a=>`<tr><td style="white-space:nowrap">${esc(String(a.created_at).replace("T"," ").slice(0,19))}</td><td>${esc(a.actor)}</td><td><span class="pill info">${esc(a.action)}</span></td><td>${esc(a.entity)} ${esc(a.entity_id)}</td><td><small>${esc(JSON.stringify(a.payload))}</small></td></tr>`).join("")}</table>`:"<small>No audit entries yet. Run a batch to create the first one.</small>";
+    out.innerHTML=list.length?`<table><tr><th>When (UTC)</th><th>Actor</th><th>Action</th><th>Record</th><th>Detail</th></tr>${list.slice(0,30).map(a=>`<tr><td style="white-space:nowrap">${esc(String(a.created_at).replace("T"," ").slice(0,19))}</td><td>${esc(a.actor)}</td><td><span class="pill info">${esc(a.action)}</span></td><td>${esc(a.entity)} ${esc(a.entity_id)}</td><td><small>${esc(JSON.stringify(a.payload))}</small></td></tr>`).join("")}</table>`:"<small>No audit entries yet. Run a batch to create the first one.</small>";
   }catch(e){out.innerHTML=`<small>Could not load audit trail: ${esc(e.message)}</small>`}
 }
 async function loadAiStrip(){
@@ -481,7 +481,7 @@ async function loadBrief(runId){
   const el=$("run-brief"); if(!el) return;
   try{
     const b=await api(`/api/v1/runs/${runId}/brief`);
-    el.innerHTML=`<div class="panel"><h3>Agent brief - run ${esc(runId)} <span data-info="brief"></span></h3><div class="detail"><b>${esc(b.headline)}</b>${(b.body||[]).map(x=>`<br>${esc(x)}`).join("")}<br><br><b>Next actions:</b><br>${(b.next_actions||[]).map(a=>"· "+esc(a)).join("<br>")}<br><br>${pill(b.source==="gemini"?"Written by Gemini from run records":"Composed from run records - "+aiWhy(b),"info")}</div></div>`;
+    el.innerHTML=`<div class="panel"><h3>Agent brief - run ${esc(runId)}</h3><div class="detail"><b>${esc(b.headline)}</b>${(b.body||[]).map(x=>`<br>${esc(x)}`).join("")}<br><br><b>Next actions:</b><br>${(b.next_actions||[]).map(a=>"· "+esc(a)).join("<br>")}<br><br>${pill(b.source==="gemini"?"Written by Gemini from run records":"Composed from run records - "+aiWhy(b),"info")}</div></div>`;
   }catch(e){ el.innerHTML="" }
 }
 let DESK=[];
@@ -525,7 +525,7 @@ async function renderDisputeDesk(matches, exceptions){
   CHASE=(xs||[]).filter(e=>e.kind==="NO_MATCH").map(e=>({payment_id:e.payment_id,payer:(e.detail||{}).payer||"Unknown payer",amount_cents:(e.detail||{}).amount_cents||0}));
   if(!items.length && !CHASE.length){ el.innerHTML=""; return }
   DESK=items.map(m=>{const d=m.result.deduction; return {payment_id:m.payment_id,payer:d.payer||"Buyer",claimed_cents:d.claimed_cents||0,reason_code:d.assigned_erp_reason_code,classification_label:(d.classification||{}).label||"deduction",win_probability:d.win_probability,expected_recovery_usd:d.expected_recovery_value_usd,tone:"strict"}});
-  el.innerHTML=`<div class="panel"><h3>Dispute desk - deductions worth fighting <span data-info="dispute"></span></h3><div class="d">The Deduction Agent classified these claims and the expected-value rule opened disputes. The Briefing Agent drafts the claim and the replies - review the draft, add the buyer's AP email, and send it from here. Every send is recorded in the Outbox below with its true status.</div>${DESK.map((f,i)=>deskCard(f,i)).join("")}${CHASE.length?`<h3 style="margin-top:18px">Unmatched payments - chase the remittance <span data-info="chaseno"></span></h3><div class="d">These payments matched nothing, so the cash sits unapplied. The platform does not guess: it asks the payer which invoices the money was for. Draft the chase email here and send it from here.</div>${CHASE.map((f,i)=>chaseCard(f,i)).join("")}`:""}<div id="outbox-strip"></div></div>`;
+  el.innerHTML=`<div class="panel"><h3>Dispute desk - deductions worth fighting</h3><div class="d">Claims opened by the expected-value rule. Review the draft, add the buyer's AP email, and send it from here. Every send is recorded in the Outbox with its true status.</div>${DESK.map((f,i)=>deskCard(f,i)).join("")}${CHASE.length?`<h3 style="margin-top:18px">Unmatched payments - chase the remittance</h3><div class="d">These payments matched nothing, so the cash sits unapplied. Draft the chase email here; the payer is asked which invoices the money was for instead of the platform guessing an allocation.</div>${CHASE.map((f,i)=>chaseCard(f,i)).join("")}`:""}<div id="outbox-strip"></div></div>`;
   loadOutbox();
   DESK.forEach((f,i)=>fillDeskDraft(i));
   CHASE.forEach((f,i)=>fillChaseDraft(i));
@@ -555,7 +555,7 @@ function sendChaseMail(i,btn){ sendMailGeneric("chase", CHASE[i].payment_id, $("
 async function loadOutbox(){
   const el=$("outbox-strip"); if(!el) return;
   try{ const o=await api("/api/v1/mail/outbox");
-    el.innerHTML=`<h3 style="margin-top:18px">Outbox <span data-info="outbox"></span></h3><div class="d">${o.configured?pill("Mailbox configured - sends go out from "+esc(o.from),"ok"):pill("No mailbox configured - sends are recorded, not sent","warn")} Every send from this product is recorded here with its true status - a mail is only ever shown as sent when the mail server accepted it.</div>`+(o.mails.length?`<table><tr><th>When (UTC)</th><th>To</th><th>Subject</th><th>Kind</th><th>Status</th></tr>${o.mails.slice(0,10).map(m=>`<tr><td>${esc((m.created_at||"").slice(5,16).replace("T"," "))}</td><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.kind)}</td><td>${pill(m.status==="sent"?"Sent":m.status==="failed"?"Failed":"Recorded - not sent", m.status==="sent"?"ok":m.status==="failed"?"bad":"warn")}</td></tr>`).join("")}</table>`:"<small>Nothing sent yet.</small>");
+    el.innerHTML=`<h3 style="margin-top:18px">Outbox</h3><div class="d">${o.configured?pill("Mailbox configured - sends go out from "+esc(o.from),"ok"):pill("No mailbox configured - sends are recorded, not sent","warn")} Every send from this product is recorded here with its true status - a mail is only ever shown as sent when the mail server accepted it.</div>`+(o.mails.length?`<table><tr><th>When (UTC)</th><th>To</th><th>Subject</th><th>Kind</th><th>Status</th></tr>${o.mails.slice(0,10).map(m=>`<tr><td>${esc((m.created_at||"").slice(5,16).replace("T"," "))}</td><td>${esc(m.to)}</td><td>${esc(m.subject)}</td><td>${esc(m.kind)}</td><td>${pill(m.status==="sent"?"Sent":m.status==="failed"?"Failed":"Recorded - not sent", m.status==="sent"?"ok":m.status==="failed"?"bad":"warn")}</td></tr>`).join("")}</table>`:"<small>Nothing sent yet.</small>");
     fillInfo();
   }catch(e){}
 }
@@ -606,7 +606,7 @@ function renderCube(inv){
   if(!inv||!inv.length){ el.innerHTML=""; return }
   const by={}; inv.forEach(i=>{ const b=by[i.customer]=by[i.customer]||{n:0,total:0,over:0}; b.n++; b.total+=i.gross_cents; if(i.due_in_days<0) b.over+=i.gross_cents; });
   const rows=Object.entries(by).sort((a,b)=>b[1].total-a[1].total);
-  el.innerHTML=`<div class="panel"><h3>Cube view - open AR by customer <span data-info="cube"></span></h3><table><tr><th>Customer <span data-info="cust"></span></th><th>Open invoices <span data-info="invid"></span></th><th>Open AR <span data-info="amt"></span></th><th>Overdue <span data-info="due"></span></th></tr>${rows.map(([c,v])=>`<tr><td>${esc(c)}</td><td>${v.n}</td><td>${money(v.total)}</td><td>${money(v.over)}</td></tr>`).join("")}</table></div>`;
+  el.innerHTML=`<div class="panel"><h3>Cube view - open AR by customer</h3><table><tr><th>Customer</th><th>Open invoices</th><th>Open AR</th><th>Overdue</th></tr>${rows.map(([c,v])=>`<tr><td>${esc(c)}</td><td>${v.n}</td><td>${money(v.total)}</td><td>${money(v.over)}</td></tr>`).join("")}</table></div>`;
 }
 /* ---- Serro-pass 2: live status bar, command palette, reveal, count-up ---- */
 async function loadStatusBar(){
@@ -678,16 +678,6 @@ document.addEventListener("keydown",e=>{
 });
 $("cmdk-in").addEventListener("input",e=>{cmdkSel=0; renderCmdk(e.target.value)});
 $("cmdk").addEventListener("click",e=>{if(e.target.id==="cmdk")closeCmdk()});
-/* ---- JD lens: the clean product look is the default; the lens restores
-   the JD mapping banners for a hiring conversation. Remembered for the
-   session only - every new visit starts clean, banners appear only when
-   the lens is deliberately flipped on. */
-function toggleLens(){
-  const off=document.body.classList.toggle("lens-off");
-  sessionStorage.setItem("slate-lens", off?"off":"on");
-  $("lens-btn").textContent="JD LENS: "+(off?"OFF":"ON");
-}
-if(sessionStorage.getItem("slate-lens")==="on"){ document.body.classList.remove("lens-off"); const lb=$("lens-btn"); if(lb)lb.textContent="JD LENS: ON"; }
 /* ---- First-visit bootstrap: an empty workspace greets a first-time
    visitor with a wall of dashes. Instead, load the demo case and run it
    once, for real - every number shown afterwards is counted from that
