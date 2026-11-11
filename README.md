@@ -1,6 +1,6 @@
 # SlateMatch - Autonomous Cash Application Agent
 
-**Live production (AWS ECS, ap-south-1):** https://sl-a434f633cb69488ca19e9b0a7c0c2cf9.ecs.ap-south-1.on.aws/ (ECS Express service `slatematch`, cluster `default`, created 11 Nov 2026; SlateMatch's own deployment, independent of any earlier service).
+**Live production (AWS ECS, ap-south-1):** http://slatematch-alb-1450473420.ap-south-1.elb.amazonaws.com/ (standard ECS Fargate service `slatematch-app` behind ALB `slatematch-alb`, cluster `default`; data on EFS volume `slatematch-data`, Gemini key in Secrets Manager; moved from the retired ECS Express service 11 Nov 2026 after a full live audit and a task-restart persistence proof).
 
 [![Build and push image to Amazon ECR](https://github.com/HarshaReddy55/slatematch/actions/workflows/build-ecr.yml/badge.svg)](https://github.com/HarshaReddy55/slatematch/actions/workflows/build-ecr.yml)
 The badge is the test gate: the workflow runs the full pytest suite
