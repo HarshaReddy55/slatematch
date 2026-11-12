@@ -1,0 +1,36 @@
+/* Tailwind v4, theme + utilities ONLY. No preflight: its resets would
+   break the vanilla pages while the two stacks coexist (Stage 0-3).
+   Tokens are mapped 1:1 from frontend/css/livecube.css :root so both
+   stacks render the same product. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-bg: #232323;
+  --color-bg2: #1e1e1e;
+  --color-panel: #2a2a2a;
+  --color-panel2: #262626;
+  --color-line: #3a3a3c;
+  --color-line2: #4c4c4e;
+  --color-ink: #f2f0ea;
+  --color-mut: #a7a49d;
+  --color-mut2: #7e7c77;
+  --color-blue: #3d75e8;
+  --color-blue2: #7fa6f2;
+  --color-ok: #34bf71;
+  --color-okbg: rgba(52, 191, 113, 0.13);
+  --color-warn: #f2c14e;
+  --color-warnbg: rgba(242, 193, 78, 0.13);
+  --color-bad: #e5484d;
+  --color-badbg: rgba(229, 72, 77, 0.13);
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  margin: 0;
+}

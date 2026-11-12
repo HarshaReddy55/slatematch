@@ -8,6 +8,18 @@ COPY rust-kernel/Cargo.toml rust-kernel/Cargo.lock* ./
 COPY rust-kernel/src ./src
 RUN cargo build --release
 
+# Stage: the React frontend (migration Stage 0) is built with Vite and
+# its bundle is copied into the served frontend tree at frontend/react,
+# where the existing StaticFiles mount serves it at /react/. The vanilla
+# frontend stays the default at / until migration Stage 4.
+FROM node:24-slim AS web-builder
+WORKDIR /build
+COPY web/package.json web/package-lock.json ./web/
+RUN cd web && npm ci --no-audit --no-fund
+COPY web ./web
+COPY frontend/js/vendor ./frontend/js/vendor
+RUN cd web && npm run build
+
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     SLATEMATCH_DATA_DIR=/app/data \
@@ -20,6 +32,7 @@ RUN pip install -r backend/requirements.txt
 COPY backend/app ./backend/app
 COPY backend/tests ./backend/tests
 COPY frontend ./frontend
+COPY --from=web-builder /build/frontend/react ./frontend/react
 COPY docs ./docs
 COPY --from=rust-builder /build/target/release/slatematch-kernel /app/bin/slatematch-kernel
 RUN mkdir -p /app/data && useradd -m slatematch && chown -R slatematch /app
