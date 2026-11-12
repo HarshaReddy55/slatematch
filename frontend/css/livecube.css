@@ -473,3 +473,80 @@ details.agentref table{margin-top:10px}
    cards never overflow a small screen. */
 .rain{display:none!important}
 .speccard{max-width:calc(100vw - 40px)}
+
+/* ---- v58 motion tokens (beUI lib/ease.ts, ported): one easing family for
+   the whole product. Springs are expressed as WAAPI configs in JS where a
+   true spring is needed; CSS surfaces use these curves. ---- */
+:root{--ease-out:cubic-bezier(0.16, 1, 0.3, 1);--ease-in:cubic-bezier(0.55, 0, 1, 0.45);--ease-in-out:cubic-bezier(0.77, 0, 0.175, 1);--ease-drawer:cubic-bezier(0.32, 0.72, 0, 1);--dur-ui:.28s}
+@keyframes cmdkFade{from{opacity:0}to{opacity:1}}
+@keyframes cmdkIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+#cmdk.open{animation:cmdkFade .18s var(--ease-out)}
+.cmdk-box{animation:cmdkIn .28s var(--ease-out)}
+.ci .fm{color:var(--blue2);font-weight:600}
+.ci{transition:background .12s var(--ease-out),color .12s var(--ease-out)}
+@media (prefers-reduced-motion: reduce){
+  #cmdk.open,.cmdk-box{animation:none}
+  .ci{transition:none}
+}
+
+/* ---- v58 run visualisation ---- */
+.outbar{height:5px;display:flex;background:var(--line);margin-top:5px;min-width:92px}
+.outbar i{display:block;height:100%}
+.outbar .ob-ok{background:var(--ok)}
+.outbar .ob-warn{background:var(--warn)}
+.outbar .ob-info{background:var(--blue)}
+.outbar .ob-rest{background:var(--bad);opacity:.5}
+.runchart{margin:10px 0 4px;background:var(--panel);border:1px solid var(--line);padding:10px 12px}
+.runchart svg{width:100%;height:110px;display:block}
+.rc-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;font:11px var(--mono);color:var(--mut)}
+.pipefoot{margin-top:8px;font:11px var(--mono);letter-spacing:.05em;color:var(--mut2)}
+
+.orb{vertical-align:-5px}
+.orb-node{display:block;margin-bottom:4px}
+
+/* ---- v58 approval + upload states ---- */
+.appr-row>td{transition:background .3s var(--ease-out),opacity .3s var(--ease-out)}
+.appr-row>td:first-child{border-left:3px solid var(--warn)}
+.appr-row.refusal>td:first-child{border-left-color:var(--bad)}
+.appr-row.deciding{opacity:.55}
+.appr-row.decided-ok>td{background:var(--okbg)}
+.appr-row.decided-no>td{background:var(--badbg)}
+.upq{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);padding:10px 12px;margin:8px 0}
+.upq .fn{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.drop.busy{border-color:var(--blue);animation:upqpulse 1.6s var(--ease-in-out) infinite}
+@keyframes upqpulse{0%,100%{border-color:var(--line2)}50%{border-color:var(--blue)}}
+@media (prefers-reduced-motion: reduce){ .drop.busy{animation:none} .appr-row>td{transition:none} }
+
+/* ---- v58 orb pill: the reference composition (orb + state word in one
+   pill) on platform tokens - panel ground, hairline border, Inter. ---- */
+.orbpill{display:inline-flex;align-items:center;gap:8px;padding:5px 13px 5px 7px;border:1px solid var(--line2);border-radius:999px;background:var(--bg2);font-size:12.5px;color:var(--ink);white-space:nowrap}
+.orbpill .orb{vertical-align:middle}
+
+/* The pending state is the pill alone on the panel ground - no bubble
+   behind it (review fix: the navy answer bubble left the small pill
+   floating in a large empty block). */
+.msg.orbpend{background:transparent;border-color:transparent;padding:6px 2px;margin:6px 0}
+
+/* ---- v58 finish pass: reference-grade surfaces. The ports carried the
+   behaviour; this layer carries the light: tonal separation instead of
+   outlines, soft shadows, gradient fills, luminous points. ---- */
+.orbpill{gap:10px;padding:8px 18px 8px 10px;background:linear-gradient(180deg,#2e2e2f,#242425);border:1px solid rgba(255,255,255,.07);box-shadow:0 6px 18px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);font-size:13.5px;font-weight:500;letter-spacing:.01em;color:#ededed}
+.orbpill .orb,.orb-node{filter:drop-shadow(0 0 5px rgba(255,255,255,.30))}
+.outbar{height:6px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,.06);box-shadow:inset 0 1px 2px rgba(0,0,0,.45)}
+.outbar .ob-ok{background:linear-gradient(180deg,color-mix(in srgb,var(--ok) 70%,#ffffff),var(--ok))}
+.outbar .ob-warn{background:linear-gradient(180deg,color-mix(in srgb,var(--warn) 70%,#ffffff),var(--warn))}
+.outbar .ob-info{background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 70%,#ffffff),var(--blue))}
+.outbar .ob-rest{background:color-mix(in srgb,var(--bad) 55%,transparent);opacity:1}
+.runchart{background:linear-gradient(180deg,#2d2d2e,#272727);border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 4px 14px rgba(0,0,0,.28);padding:12px 14px}
+.rc-leg{align-items:center}
+.rcd{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+#cmdk{background:rgba(3,3,5,.55);backdrop-filter:blur(6px)}
+.cmdk-box{background:linear-gradient(180deg,#2c2c2d,#232324);border:1px solid rgba(255,255,255,.09);border-radius:10px;box-shadow:0 30px 80px rgba(0,0,0,.72),0 4px 18px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}
+.cmdk-box input{background:transparent}
+.ci.sel{background:linear-gradient(180deg,rgba(61,117,232,.22),rgba(61,117,232,.13));box-shadow:inset 0 0 0 1px rgba(61,117,232,.35)}
+
+/* Agent-running layout: the active agent's orb sits at the right of its
+   card header, opposite the agent name, rather than above the content. */
+.anode-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-height:28px}
+.anode-top b{padding-top:3px}
+.anode-top .orb-node{display:block;flex:none;margin:0}

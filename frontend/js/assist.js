@@ -5,7 +5,8 @@
 let PARSE_SEQ=0, LAST_PARSED_TEXT=null;
 async function runParse(text){
   const seq=++PARSE_SEQ;
-  const out=await api("/api/v1/parse",{method:"POST",body:JSON.stringify({text})});
+  const orbTimer=setTimeout(()=>{ if(seq===PARSE_SEQ){ const po=$("parse-out"); if(po){ po.innerHTML=`<div class="msg"><span class="orbpill"><canvas class="orb" data-orb="searching" data-orb-size="30" role="img" aria-label="Reading the remittance"></canvas>Reading the remittance...</span></div>`; if(window.orbSync)orbSync(); } } },400);
+  let out; try{ out=await api("/api/v1/parse",{method:"POST",body:JSON.stringify({text})}); } finally{ clearTimeout(orbTimer); }
   if(seq!==PARSE_SEQ) return; // a newer edit already superseded this result
   LAST_PARSED_TEXT=text;
     const f=out.fields||{};
@@ -69,8 +70,11 @@ async function askQ(q){$("chat-in").value=q;ask()}
 async function ask(){
   const q=$("chat-in").value.trim(); if(!q)return;
   addChat("You",q); $("chat-in").value="";
+  const log=$("chat"); const pid="cop-"+Date.now();
+  if(log){ log.innerHTML+=`<div class="msg bot orbpend" id="${pid}"><span class="orbpill"><canvas class="orb" data-orb="listening" data-orb-size="30" role="img" aria-label="Thinking"></canvas>Thinking...</span></div>`; log.scrollTop=log.scrollHeight; if(window.orbSync)orbSync(); }
   try{const a=await api("/api/v1/copilot",{method:"POST",body:JSON.stringify({question:q})}); addChat("Copilot",a.answer,a.citations)}
   catch(e){addChat("Copilot","I could not answer that: "+e.message)}
+  const pend=document.getElementById(pid); if(pend)pend.remove();
 }
 /* ---------- Floating assistant: one chatbot on every page, bottom right.
    Its suggested questions are built from the CURRENT workspace data -
@@ -305,7 +309,7 @@ async function loadApprovals(){
     const badge=$("appr-count");
     if(badge){badge.style.display=list.length?"":"none"; badge.textContent=list.length+" waiting"}
     __apprN=list.length;
-    out.innerHTML=list.length?`<table><tr><th>Payment</th><th>Amount</th><th>Matched invoices</th><th>Conf. <span data-info="conf"></span></th><th>Why it is held</th><th>Decision</th></tr>${list.map(a=>{const refusal=!(a.invoices||[]).length;return `<tr><td>${esc(a.payment_id)}<br><small>${esc(a.run_id)}</small></td><td>${a.amount_cents==null?"-":money(a.amount_cents)}</td><td>${refusal?pill("Refusal - no invoices matched","warn"):a.invoices.map(esc).join(", ")}</td><td>${Number(a.confidence).toFixed(2)}</td><td style="max-width:340px">${esc(a.decision_reason||"Held for review")}</td><td style="white-space:nowrap">${refusal?`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Park in suspense GL</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Send back</button>`:`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Approve and post</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Reject</button>`}</td></tr>`}).join("")}</table>${list.some(a=>!(a.invoices||[]).length)?`<small>A refusal is the solver's verdict that nothing in the ledger explains the wire. It can never be posted - there is no document behind it. Park it in unapplied suspense (the remittance chase is already drafted in the Mail Hub) or send it back for manual allocation.</small>`:""}`:"<small>Nothing waiting. Matches appear here when policy holds one - lower the maker-checker threshold in Policy Studio and run a batch to see it work.</small>";
+    out.innerHTML=list.length?`<table><tr><th>Payment</th><th>Amount</th><th>Matched invoices</th><th>Conf. <span data-info="conf"></span></th><th>Why it is held</th><th>Decision</th></tr>${list.map(a=>{const refusal=!(a.invoices||[]).length;return `<tr class="appr-row ${refusal?"refusal":"held"}"><td>${esc(a.payment_id)}<br><small>${esc(a.run_id)}</small></td><td>${a.amount_cents==null?"-":money(a.amount_cents)}</td><td>${refusal?pill("Refusal - no invoices matched","warn"):a.invoices.map(esc).join(", ")}</td><td>${Number(a.confidence).toFixed(2)}</td><td style="max-width:340px">${esc(a.decision_reason||"Held for review")}</td><td style="white-space:nowrap">${refusal?`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Park in suspense GL</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Send back</button>`:`<button class="btn small" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'approve',this)">Approve and post</button> <button class="btn small ghost" data-mid="${esc(a.match_id)}" onclick="decideMatch(this.dataset.mid,'reject',this)">Reject</button>`}</td></tr>`}).join("")}</table>${list.some(a=>!(a.invoices||[]).length)?`<small>A refusal is the solver's verdict that nothing in the ledger explains the wire. It can never be posted - there is no document behind it. Park it in unapplied suspense (the remittance chase is already drafted in the Mail Hub) or send it back for manual allocation.</small>`:""}`:"<small>Nothing waiting. Matches appear here when policy holds one - lower the maker-checker threshold in Policy Studio and run a batch to see it work.</small>";
   }catch(e){out.innerHTML=`<small>Could not load approvals: ${esc(e.message)}</small>`}
   return __apprN;
 }
@@ -316,6 +320,7 @@ async function scheduleApprovalsJump(ms){
   __apprN=await loadApprovals();
 }
 async function decideMatch(id,decision,btn){
+  const row=btn?btn.closest("tr"):null; if(row)row.classList.add("deciding");
   const cell=btn?(btn.closest("td")||btn.parentElement):null;
   const prevCell=cell?cell.innerHTML:null;
   if(cell) cell.innerHTML = decision==="approve" ? '<span class="posted-ok">Posting...</span>' : '<span style="opacity:.7">Working...</span>';
@@ -327,13 +332,14 @@ async function decideMatch(id,decision,btn){
     if(decision==="approve"&&r.erp_document_id) msg+=` - ERP document ${r.erp_document_id}`;
     if(decision==="approve"&&(r.settled_invoices||[]).length) msg+=` - ${r.settled_invoices.length} invoice(s) settled and out of the forecast`;
     if(r.fingerprint) msg+=` - audit fingerprint ${r.fingerprint.slice(0,12)}...`;
+    if(row){ row.classList.remove("deciding"); row.classList.add(decision==="approve"?"decided-ok":"decided-no"); }
     if(cell){ if(r.status==="PARKED_SUSPENSE") cell.innerHTML='<span class="posted-ok">&#10003; Parked in suspense</span>';
       else if(decision==="approve") cell.innerHTML='<span class="posted-ok">&#10003; Approved - document staged for SAP</span>';
       else cell.innerHTML='<span style="opacity:.65">Rejected</span>'; }
     toast(msg);
     setTimeout(()=>{ loadApprovals(); if($("appr-drawer").classList.contains("on")) renderApprDrawer(); },1000);
     const w=await refreshWorkspace(); if(w) refreshDash();}
-  catch(e){ if(WS&&typeof WS.approvals_pending==="number"){ WS.approvals_pending++; const c=$("cb-appr"); if(c)c.textContent=WS.approvals_pending; }
+  catch(e){ if(row)row.classList.remove("deciding"); if(WS&&typeof WS.approvals_pending==="number"){ WS.approvals_pending++; const c=$("cb-appr"); if(c)c.textContent=WS.approvals_pending; }
     if(cell&&prevCell!==null) cell.innerHTML=prevCell;
     toast("Decision failed: "+e.message); if(btn)btn.disabled=false }
 }
@@ -649,21 +655,58 @@ function cmdkAll(){
     {grp:"Actions",num:"RUN",label:"Load the demo case and run it live",run:()=>seedAndRun(undefined)},
     {grp:"Actions",num:"LIVE",label:"Run the active case live (streamed)",run:()=>{go("run"); setTimeout(()=>runLive($("live-btn")),350)}},
     {grp:"Actions",num:"APR",label:"Jump to the approvals queue",run:()=>{go("run"); scheduleApprovalsJump(250)}},
+    {grp:"Actions",num:"EXP",label:"Export audit and SAP bundle (PDF)",run:()=>downloadExport('/api/v1/export/bundle.pdf','slatematch-audit-bundle.pdf')},
+    {grp:"Actions",num:"CSV",label:"Export matches as CSV",run:()=>downloadExport('/api/v1/export/matches.csv','slatematch-matches.csv')},
+    {grp:"Actions",num:"SAV",label:"Save this session",run:()=>{go("dash"); setTimeout(()=>saveSession(null),250)}},
+    {grp:"Actions",num:"RST",label:"Restore a saved session",run:()=>{go("dash"); setTimeout(()=>{const i=$("session-id-in"); if(i)i.focus()},250)}},
+    {grp:"Workspace",num:"KEY",label:"Set the workspace access key",run:()=>openKeyModal()},
+    {grp:"Workspace",num:"DOC",label:"Open the product documents",run:()=>openDocs()},
+    {grp:"Workspace",num:"CLR",label:"Reset workspace to empty",run:()=>resetWorkspace(null)},
   ];
   return views.concat(acts);
 }
+/* Fuzzy matcher (beUI command-palette pattern, vanilla port): subsequence
+   match with bonuses for word starts and consecutive runs. Returns
+   {score, pos} or null when the query is not a subsequence. */
+function cmdkFuzzy(q,label){
+  q=q.toLowerCase(); const s=label.toLowerCase();
+  if(s.includes(q)) return {score:1000-q.length*2-(s.indexOf(q)), pos:[...q].map((_,i)=>s.indexOf(q)+i)};
+  let qi=0, score=0, streak=0; const pos=[];
+  for(let i=0;i<s.length&&qi<q.length;i++){
+    if(s[i]===q[qi]){
+      pos.push(i); streak++;
+      score+=1+streak*2+((i===0||s[i-1]===" ")?4:0); qi++;
+    } else streak=0;
+  }
+  return qi===q.length?{score,pos}:null;
+}
+function cmdkHi(label,pos){
+  const set=new Set(pos); let out="";
+  for(let i=0;i<label.length;i++){ const ch=esc(label[i]); out+=set.has(i)?`<b class="fm">${ch}</b>`:ch; }
+  return out;
+}
 function renderCmdk(q){
-  const all=cmdkAll().filter(it=>!q||it.label.toLowerCase().includes(q.toLowerCase()));
+  q=(q||"").trim();
+  let all;
+  if(!q){ all=cmdkAll().map(it=>({...it,pos:null})); }
+  else{
+    const scored=[];
+    cmdkAll().forEach(it=>{ const m=cmdkFuzzy(q,it.label); if(m) scored.push({...it,score:m.score,pos:m.pos}); });
+    const grpBest={}; scored.forEach(it=>{ grpBest[it.grp]=Math.max(grpBest[it.grp]??-1,it.score); });
+    const grpOrder=Object.keys(grpBest).sort((a,b)=>grpBest[b]-grpBest[a]);
+    all=grpOrder.flatMap(g=>scored.filter(it=>it.grp===g).sort((a,b)=>b.score-a.score));
+  }
   cmdkItems=all; cmdkSel=Math.min(cmdkSel,Math.max(all.length-1,0));
   let lastGrp="";
   $("cmdk-list").innerHTML=all.length?all.map((it,i)=>{
     const gh=it.grp!==lastGrp?`<div class="cg">${it.grp}</div>`:""; lastGrp=it.grp;
-    return gh+`<div class="ci ${i===cmdkSel?"sel":""}" data-i="${i}"><span class="num">${it.num}</span>${esc(it.label)}</div>`;
-  }).join(""):'<div class="ci">No match - try a view name</div>';
+    return gh+`<div class="ci ${i===cmdkSel?"sel":""}" data-i="${i}"><span class="num">${it.num}</span><span class="cl">${it.pos?cmdkHi(it.label,it.pos):esc(it.label)}</span></div>`;
+  }).join(""):'<div class="ci">No match - try a view name or an action</div>';
   $("cmdk-list").querySelectorAll(".ci[data-i]").forEach(el=>{
     el.onclick=()=>pickCmdk(Number(el.dataset.i));
     el.onmousemove=()=>{if(cmdkSel!==Number(el.dataset.i)){cmdkSel=Number(el.dataset.i); renderCmdk($("cmdk-in").value)}};
   });
+  const sel=$("cmdk-list").querySelector(".ci.sel"); if(sel) sel.scrollIntoView({block:"nearest"});
 }
 function openCmdk(){ $("cmdk").classList.add("open"); cmdkSel=0; $("cmdk-in").value=""; renderCmdk(""); setTimeout(()=>$("cmdk-in").focus(),30); }
 function closeCmdk(){ $("cmdk").classList.remove("open"); }
@@ -674,6 +717,8 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape")closeCmdk();
   else if(e.key==="ArrowDown"){e.preventDefault(); cmdkSel=Math.min(cmdkSel+1,cmdkItems.length-1); renderCmdk($("cmdk-in").value)}
   else if(e.key==="ArrowUp"){e.preventDefault(); cmdkSel=Math.max(cmdkSel-1,0); renderCmdk($("cmdk-in").value)}
+  else if(e.key==="Home"){e.preventDefault(); cmdkSel=0; renderCmdk($("cmdk-in").value)}
+  else if(e.key==="End"){e.preventDefault(); cmdkSel=cmdkItems.length-1; renderCmdk($("cmdk-in").value)}
   else if(e.key==="Enter"){e.preventDefault(); pickCmdk(cmdkSel)}
 });
 $("cmdk-in").addEventListener("input",e=>{cmdkSel=0; renderCmdk(e.target.value)});

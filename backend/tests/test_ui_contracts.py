@@ -155,9 +155,9 @@ def test_v31_staged_lifecycle_contract():
     """v31: loading stages, execution is explicit and visible. The shell
     carries the readiness/gate helpers, the persistent agent strip with
     per-agent counts, the live-proof mutation, the quota-safe AI framing,
-    and the current cache-bust stamps (v57 since the explanation pass)."""
+    and the current cache-bust stamps (v58 since the palette pass)."""
     html = client.get("/").text
-    assert 'css/livecube.css?v=57' in html and 'js/state.js?v=57' in html
+    assert 'css/livecube.css?v=58' in html and 'js/state.js?v=58' in html
     # v32 declutter: no standalone Load demo case button anywhere, and the
     # author credit sits above the nav so it can never clip items 12-14
     assert '>Load demo case</button>' not in html
@@ -231,3 +231,89 @@ def test_v57_explanation_diet_contract():
     assert "Solver Engine - HiGHS MILP" in operate
     for key in ("payid", "jdreq", "masc", "agents", "cube"):
         assert f"\n  {key}:[" not in operate, key
+
+
+def test_v58_palette_and_motion_tokens_contract():
+    """v58: beUI motion tokens live in the stylesheet as one easing family,
+    and the command palette is the upgraded build - fuzzy ranked matching
+    with matched-character highlighting, the full action set (export, save,
+    restore, access key, docs, reset), and Home/End cursor keys - not the
+    old substring filter over views plus three actions."""
+    html = client.get("/").text
+    assert 'css/livecube.css?v=58' in html and 'js/assist.js?v=58' in html
+    css = client.get("/css/livecube.css").text
+    assert "--ease-out:cubic-bezier(0.16, 1, 0.3, 1)" in css
+    assert "--ease-drawer:cubic-bezier(0.32, 0.72, 0, 1)" in css
+    assert "@keyframes cmdkIn" in css and "prefers-reduced-motion" in css
+    assist = client.get("/js/assist.js").text
+    assert "function cmdkFuzzy" in assist and "function cmdkHi" in assist
+    for label in ("Export audit and SAP bundle (PDF)", "Export matches as CSV",
+                  "Save this session", "Restore a saved session",
+                  "Set the workspace access key", "Open the product documents",
+                  "Reset workspace to empty"):
+        assert label in assist, label
+    assert 'e.key==="Home"' in assist and 'e.key==="End"' in assist
+
+
+def test_v58_run_visualisation_contract():
+    """v58 run page: every run draws its own outcome path and per-payment
+    explanation share from the stored results - the cumulative chart in
+    the run summary (live and stored paths), the segmented outcome bar in
+    each match row, and the measured-time footer on the agent strip."""
+    operate = client.get("/js/operate.js").text
+    assert "function runClassify" in operate
+    assert "function outcomeBarHtml" in operate and "function runChartHtml" in operate
+    assert operate.count("runChartHtml(") >= 3  # helper + live + stored summaries
+    assert operate.count("outcomeBarHtml(") >= 3  # helper + both match tables
+    assert "pipefoot" in operate and "MS MEASURED ACROSS THE PIPELINE" in operate
+    css = client.get("/css/livecube.css").text
+    assert ".outbar" in css and ".runchart" in css and ".pipefoot" in css
+
+
+def test_v58_thinking_orbs_contract():
+    """v58 agent states: the thinking-orbs engine is vendored (MIT) and
+    bridged in vanilla JS - the module loads the engine, exposes orbSync,
+    and the three working moments carry an orb canvas: Matching while a
+    run streams (solving), the Copilot while it answers (listening), and
+    the remittance parse while it reads (searching)."""
+    html = client.get("/").text
+    assert 'js/orbs.js?v=58' in html and 'type="module"' in html
+    bridge = client.get("/js/orbs.js").text
+    assert "orbs-engine.js" in bridge and "orbSync" in bridge
+    # density rule: the bridge always draws the engine's large (64) preset
+    # and scales down, so the dot field never thins out at display size
+    assert "RENDER = 64" in bridge and "resolvePreset(state, RENDER)" in bridge
+    engine = client.get("/js/vendor/orbs-engine.js")
+    assert engine.status_code == 200 and "MODE_FRAMES" in engine.text
+    operate = client.get("/js/operate.js").text
+    assert '["solving","Solving"]' in operate  # Matching's orb, via AGENT_ORBS
+    # the live agent strip puts each running agent's orb at the right of
+    # its card header, with a state matched to that agent's work
+    assert "AGENT_ORBS" in operate and 'class="anode-top"' in operate
+    assist = client.get("/js/assist.js").text
+    assert 'data-orb="listening"' in assist and 'data-orb="searching"' in assist
+    # the pending states use the reference composition: orb + state word
+    # inside one pill, styled on platform tokens
+    assert assist.count('class="orbpill"') >= 2
+    assert "orbpend" in assist  # the pending pill sits on the panel ground, no bubble
+    css = client.get("/css/livecube.css").text
+    assert ".orbpill" in css and "border-radius:999px" in css
+    # finish pass: luminous orbs, gradient fills, elevated palette
+    assert "drop-shadow" in css and "linearGradient" in operate
+    assert ".anode-top" in css and "justify-content:space-between" in css
+    assert "backdrop-filter:blur(6px)" in css
+
+
+def test_v58_approval_and_upload_states_contract():
+    """v58 states: approval rows carry their kind and decision lifecycle
+    (held vs refusal accent, deciding dim, decided flash, restored on
+    error), and a file import shows a queue row with a reading orb and a
+    busy dropzone from the moment the file is routed until it settles."""
+    assist = client.get("/js/assist.js").text
+    assert 'class="appr-row ${refusal?"refusal":"held"}' in assist
+    assert 'classList.add("deciding")' in assist and "decided-ok" in assist
+    operate = client.get("/js/operate.js").text
+    assert 'class="upq"' in operate and 'dropEl.classList.add("busy")' in operate
+    assert 'Import failed' in operate
+    css = client.get("/css/livecube.css").text
+    assert ".appr-row" in css and ".upq" in css and ".drop.busy" in css

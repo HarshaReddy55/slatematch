@@ -167,6 +167,40 @@ async function openRun(runId){
   renderGradeFromStored();
   scheduleApprovalsJump(1200);
 }
+
+/* ---- v58 run visualisation (references: tests visualised, agent diff
+   chart, boot sequence). Every figure below is computed from the run's
+   own stored results - nothing is estimated. ---- */
+function runClassify(it){
+  if(it.auto_posted===true||it.status==="AUTO_POSTED") return 0;
+  if(it.status==="PROPOSED"||it.status==="OPTIMAL_EXACT_MATCH"||it.status==="PARTIAL_MATCH") return 1;
+  return 2;
+}
+function outcomeBarHtml(alloc,resid,status){
+  const total=Math.abs(alloc)+Math.abs(resid||0);
+  const share=total>0?Math.max(0,Math.min(1,Math.abs(alloc)/total)):0;
+  const cls=runClassify({status});
+  const segCls=cls===0?"ob-ok":cls===1?"ob-warn":"ob-info";
+  const pct=Math.round(share*100);
+  return `<div class="outbar" title="Explained ${pct}% - allocated cash against the residual left open"><i class="${segCls}" style="width:${pct}%"></i><i class="ob-rest" style="width:${100-pct}%"></i></div>`;
+}
+function runChartHtml(items){
+  if(!items||items.length<2) return "";
+  const W=600,H=116,PL=4,PR=6,PT=10,PB=8,n=items.length;
+  const cum=[[0,0,0]]; const cur=[0,0,0];
+  items.forEach(it=>{ cur[runClassify(it)]++; cum.push([...cur]); });
+  const maxY=Math.max(1,...cur);
+  const X=i=>PL+(W-PL-PR)*(i/n), Y=v=>H-PB-(v/maxY)*(H-PT-PB);
+  const step=c=>cum.map((v,i)=>i===0?`M${X(0).toFixed(1)} ${Y(v[c]).toFixed(1)}`:`H${X(i).toFixed(1)} V${Y(v[c]).toFixed(1)}`).join(" ");
+  const cols=["var(--ok)","var(--warn)","var(--bad)"], hex=["#34bf71","#f2c14e","#e5484d"];
+  const defs=`<defs>${hex.map((h,c)=>`<linearGradient id="rcg${c}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${h}" stop-opacity="0.20"/><stop offset="1" stop-color="${h}" stop-opacity="0"/></linearGradient><pattern id="rcd${c}" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="1.6" cy="1.6" r="1.1" fill="${h}" fill-opacity="0.38"/></pattern>`).join("")}</defs>`;
+  const grid=[0.25,0.5,0.75].map(f=>`<line x1="${PL}" x2="${W-PR}" y1="${Y(maxY*f).toFixed(1)}" y2="${Y(maxY*f).toFixed(1)}" stroke="rgba(255,255,255,.055)" stroke-width="1" stroke-dasharray="2 5"/>`).join("");
+  const series=[0,1,2].map(c=>{ const d=step(c);
+    const fill=`${d} L${X(n).toFixed(1)} ${Y(0).toFixed(1)} L${X(0).toFixed(1)} ${Y(0).toFixed(1)} Z`;
+    return `<path d="${fill}" fill="url(#rcg${c})" stroke="none"/><path d="${fill}" fill="url(#rcd${c})" stroke="none"/><path d="${d}" fill="none" stroke="${cols[c]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${X(n)}" cy="${Y(cur[c])}" r="7" fill="${hex[c]}" opacity="0.18"/><circle cx="${X(n)}" cy="${Y(cur[c])}" r="3" fill="${hex[c]}"/><circle cx="${X(n)}" cy="${Y(cur[c])}" r="1.2" fill="#ffffff" opacity="0.85"/>`; }).join("");
+  const leg=[[0,"Auto-posted"],[1,"Held for a person"],[2,"Needs investigation"]].map(([c,t])=>`<span><i class="rcd" style="background:${cols[c]};box-shadow:0 0 6px ${cols[c]}"></i><b style="color:${cols[c]}">${t} ${cur[c]}</b></span>`).join("");
+  return `<div class="runchart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Cumulative run outcomes">${defs}${grid}${series}</svg><div class="rc-leg">${leg}<span>payments in run order, cumulative</span></div></div>`;
+}
 function renderStoredRun(runId,matches,exceptions){
   lastMatches=matches;
   let shown=matches;
@@ -176,8 +210,8 @@ function renderStoredRun(runId,matches,exceptions){
   }
   $("run-summary").innerHTML=RUN_FILTER==="exceptions"
     ?`<div class="msg"><span class="runfilter"><b>Filtered: exception and disputed rows</b> of run <b>${esc(runId)}</b> - ${shown.length} of ${matches.length} matches shown, ${exceptions.length} exceptions below. <button class="btn small ghost" onclick="clearRunFilter()">Clear filter</button></span></div>`
-    :`<div class="msg">Run <b>${esc(runId)}</b> - ${matches.length} matches, ${exceptions.length} exceptions. Select a match for its evidence.</div>`;
-  $("matches").innerHTML=shown.length?`<table><tr><th>Payment</th><th>Decision <span data-info="decision"></span></th><th>Solver</th><th>Matched invoices</th><th>Allocated cash</th><th>Residual <span data-info="resid"></span></th><th>Conf. <span data-info="conf"></span></th></tr>${shown.map(m=>{const i=matches.indexOf(m);const rr=m.result||{};return `<tr class="clickable" onclick="storedDetail(${i})"><td>${esc(m.payment_id)}</td><td>${pill(m.status,m.status==="AUTO_POSTED"?"ok":"warn")}</td><td>${esc(m.solver)}</td><td>${(rr.lines||[]).map(l=>esc(l.invoice_id)).join(", ")||"-"}</td><td>${money((rr.lines||[]).reduce((a,l)=>a+l.net_cents,0))}</td><td>${money(m.residual_cents)}</td><td>${Number(m.confidence).toFixed(2)}</td></tr>`}).join("")}</table>`:"<small>No matches stored for this run.</small>";
+    :`<div class="msg">Run <b>${esc(runId)}</b> - ${matches.length} matches, ${exceptions.length} exceptions. Select a match for its evidence.</div>`+runChartHtml(matches);
+  $("matches").innerHTML=shown.length?`<table><tr><th>Payment</th><th>Decision <span data-info="decision"></span></th><th>Solver</th><th>Matched invoices</th><th>Allocated cash</th><th>Residual <span data-info="resid"></span></th><th>Conf. <span data-info="conf"></span></th></tr>${shown.map(m=>{const i=matches.indexOf(m);const rr=m.result||{};const alloc=(rr.lines||[]).reduce((a,l)=>a+l.net_cents,0);return `<tr class="clickable" onclick="storedDetail(${i})"><td>${esc(m.payment_id)}</td><td>${pill(m.status,m.status==="AUTO_POSTED"?"ok":"warn")}</td><td>${esc(m.solver)}</td><td>${(rr.lines||[]).map(l=>esc(l.invoice_id)).join(", ")||"-"}</td><td>${money(alloc)}${outcomeBarHtml(alloc,m.residual_cents,m.status)}</td><td>${money(m.residual_cents)}</td><td>${Number(m.confidence).toFixed(2)}</td></tr>`}).join("")}</table>`:"<small>No matches stored for this run.</small>";
   $("exceptions").innerHTML=exceptions.length?`<table><tr><th>Payment</th><th>Kind</th><th>Severity</th><th>Recommended action <span data-info="excact"></span></th><th>Actions</th></tr>${exceptions.map(e=>`<tr><td>${esc(e.payment_id)}</td><td>${pill(e.kind,"warn")}</td><td>${esc(e.severity)}</td><td>${esc(e.recommended_action)}</td><td class="exc-act" data-pid="${esc(e.payment_id)}" style="white-space:nowrap"><button class="btn small ghost" data-pid="${esc(e.payment_id)}" onclick="openChaseFor(this.dataset.pid)">Remittance inquiry</button> <button class="btn small ghost" onclick="go('ledger')">Manual split in Ledger</button></td></tr>`).join("")}</table>`:"<small>No exceptions. Clean run.</small>";
   decorateExceptionActions();
   $("match-detail").innerHTML="";
@@ -290,8 +324,8 @@ async function seedAndRun(btn){ await loadCaseAndRun("seed",btn) }
 function renderRun(b){
   BRIEF_RUN=null; BRIEF_PROMISE=null; // a finished run invalidates any brief computed while it executed
   RUN_FILTER=null;
-  $("run-summary").innerHTML=`<div class="msg">Run <b>${esc(b.run_id)}</b> - ${b.payments} payments, <b>${b.auto_posted} auto-posted</b>, touchless ${(b.touchless_rate*100).toFixed(1)}%. Select a match for lines and counterfactuals.</div>`;
-  $("matches").innerHTML=`<table><tr><th>Payment</th><th>Status</th><th>Matched by <span data-info="rung"></span></th><th>Matched invoices</th><th>Allocated cash</th><th>Residual <span data-info="resid"></span></th><th>Conf. <span data-info="conf"></span></th></tr>${b.results.map((r,i)=>`<tr class="clickable" onclick="liveDetail(${i})"><td>${esc(r.payment_id)}</td><td>${statusPill(r.status)}</td><td>${pill(esc(r.matched_by||"-"),"info")}</td><td>${r.lines.map(l=>esc(l.invoice_id)).join(", ")||"-"}</td><td>${money(r.lines.reduce((a,l)=>a+l.net_cents,0))}</td><td>${money(r.residual_cents)}</td><td><div class="confbar"><i style="width:${Math.round(r.confidence*100)}%"></i></div><small>${Number(r.confidence).toFixed(2)}</small></td></tr>`).join("")}</table>`;
+  $("run-summary").innerHTML=`<div class="msg">Run <b>${esc(b.run_id)}</b> - ${b.payments} payments, <b>${b.auto_posted} auto-posted</b>, touchless ${(b.touchless_rate*100).toFixed(1)}%. Select a match for lines and counterfactuals.</div>`+runChartHtml(b.results);
+  $("matches").innerHTML=`<table><tr><th>Payment</th><th>Status</th><th>Matched by <span data-info="rung"></span></th><th>Matched invoices</th><th>Allocated cash</th><th>Residual <span data-info="resid"></span></th><th>Conf. <span data-info="conf"></span></th></tr>${b.results.map((r,i)=>{const alloc=r.lines.reduce((a,l)=>a+l.net_cents,0);return `<tr class="clickable" onclick="liveDetail(${i})"><td>${esc(r.payment_id)}</td><td>${statusPill(r.status)}</td><td>${pill(esc(r.matched_by||"-"),"info")}</td><td>${r.lines.map(l=>esc(l.invoice_id)).join(", ")||"-"}</td><td>${money(alloc)}${outcomeBarHtml(alloc,r.residual_cents,r.auto_posted?"AUTO_POSTED":r.status)}</td><td>${money(r.residual_cents)}</td><td><div class="confbar"><i style="width:${Math.round(r.confidence*100)}%"></i></div><small>${Number(r.confidence).toFixed(2)}</small></td></tr>`}).join("")}</table>`;
   $("exceptions").innerHTML=b.exceptions.length?`<table><tr><th>Payment</th><th>Kind</th><th>Severity</th><th>Recommended action <span data-info="excact"></span></th><th>Actions</th></tr>${b.exceptions.map(e=>`<tr><td>${esc(e.payment_id)}</td><td>${pill(e.kind,"warn")}</td><td>${esc(e.severity)}</td><td>${esc(e.recommended_action)}</td><td class="exc-act" data-pid="${esc(e.payment_id)}" style="white-space:nowrap"><button class="btn small ghost" data-pid="${esc(e.payment_id)}" onclick="openChaseFor(this.dataset.pid)">Remittance inquiry</button> <button class="btn small ghost" onclick="go('ledger')">Manual split in Ledger</button></td></tr>`).join("")}</table>`:"<small>No exceptions. Clean run.</small>";
   decorateExceptionActions();
   $("match-detail").innerHTML="";
@@ -311,11 +345,13 @@ let PIPE_DATA=[];
    genuinely goes, until the response arrives. */
 const AGENT_LIVE=[["Capture","wires received"],["Linking","candidates narrowed"],["Matching","wires solved"],["Deduction","claims judged"],["Policy","decisions made"],["Briefing","drafts composed"]];
 let AGENT_LIVE_STATE=null;
+const AGENT_ORBS=[["searching","Scanning"],["searching","Searching"],["solving","Solving"],["working","Working"],["working","Deciding"],["composing","Composing"]];
 function agentStripHtml(stages,counts,note){
   const cards=AGENT_LIVE.map((def,i)=>{ const s=stages[i];
     const pl= s==="done"?pill("Completed","ok"): s==="running"?pill("Running","info"): s==="ondemand"?pill("On demand","info"): pill("Queued","grey");
     const sub= s==="running"?"working...": s==="done"?"done": s==="ondemand"?"composes on demand":"waiting";
-    return `${i?'<div class="aarr">&#8594;</div>':""}<div class="anode live ${s}"><b>${def[0]}</b><span>${counts[i]||def[1]}</span><span>${sub}</span>${pl}</div>`; }).join("");
+    const orb=s==="running"?`<canvas class="orb orb-node" data-orb="${AGENT_ORBS[i][0]}" data-orb-size="28" role="img" aria-label="${AGENT_ORBS[i][1]}"></canvas>`:"";
+    return `${i?'<div class="aarr">&#8594;</div>':""}<div class="anode live ${s}"><div class="anode-top"><b>${def[0]}</b>${orb}</div><span>${counts[i]||def[1]}</span><span>${sub}</span>${pl}</div>`; }).join("");
   return `<div class="apipe">${cards}</div><small>${note}</small>`;
 }
 function renderAgentLive(){
@@ -326,6 +362,7 @@ function renderAgentLive(){
   if(st.resolved) counts[1]=`${st.resolved} resolved`;
   if(st.judged) counts[3]=`${st.judged} judged`;
   el.innerHTML=agentStripHtml(st.stages,counts,"Live progress from the run itself - when the run lands, this strip becomes the run's permanent record with its measured timings.");
+  if(window.orbSync) orbSync();
 }
 function agentLiveStart(total){
   AGENT_LIVE_STATE={total:total||0,resolved:0,solved:0,judged:0,decided:0,stages:["running","queued","queued","queued","queued","queued"]};
@@ -361,7 +398,7 @@ async function renderAgentPipe(runId){
   try{ const d=await api(`/api/v1/runs/${runId}/agents`); PIPE_DATA=d.agents||[];
     if(!PIPE_DATA.length){ el.innerHTML="<small>This run predates agent pipeline recording. Run the batch again and each agent's timing and payload will be inspectable here.</small>"; return }
     const cnt=a=>{ const e=a.evidence||{}; if(a.agent==="Capture Agent") return `${e.payments_received??"-"} wires in`; if(a.agent==="Linking Agent") return `${e.candidates_total??"-"} candidates`; if(a.agent==="Matching Agent") return `${e.payments_solved??"-"} wires solved`; if(a.agent==="Deduction Agent") return `${e.claims_judged??"-"} claims judged`; if(a.agent==="Policy Agent") return `${e.auto_posted??"-"} auto-posted, ${(e.held_for_approval??e.proposed_for_review??"-")} held`; if(a.agent==="Briefing Agent") return `${e.settlement_drafts_recorded??"-"} drafts composed`; return "" };
-    el.innerHTML=`<div class="apipe">${PIPE_DATA.map((a,i)=>`${i?'<div class="aarr">&#8594;</div>':""}<button class="anode" onclick="inspectAgent(${i})"><b>${esc(AGENT_SHORT[a.agent]||a.agent)}</b><span>${cnt(a)}</span><span>${a.status==="ON_DEMAND"?"composes on demand":a.latency_ms+" ms measured"}</span>${pill(a.status==="COMPLETED"?"Completed":a.status==="ON_DEMAND"?"On demand":a.status, a.status==="COMPLETED"?"ok":"info")}</button>`).join("")}</div><small>This strip is the run's permanent record: timings and payloads are the steps the engine recorded while it executed - click an agent to inspect what it handed on.</small>`;
+    el.innerHTML=`<div class="apipe">${PIPE_DATA.map((a,i)=>`${i?'<div class="aarr">&#8594;</div>':""}<button class="anode" onclick="inspectAgent(${i})"><b>${esc(AGENT_SHORT[a.agent]||a.agent)}</b><span>${cnt(a)}</span><span>${a.status==="ON_DEMAND"?"composes on demand":a.latency_ms+" ms measured"}</span>${pill(a.status==="COMPLETED"?"Completed":a.status==="ON_DEMAND"?"On demand":a.status, a.status==="COMPLETED"?"ok":"info")}</button>`).join("")}</div><div class="pipefoot">RUN RECORD - ${PIPE_DATA.length} AGENTS - ${PIPE_DATA.reduce((a,x)=>a+(x.latency_ms||0),0)} MS MEASURED ACROSS THE PIPELINE</div><small>This strip is the run's permanent record: timings and payloads are the steps the engine recorded while it executed - click an agent to inspect what it handed on.</small>`;
     setTimeout(autoInspectMatching,80);
   }catch(e){ el.innerHTML=""; }
 }
@@ -541,6 +578,10 @@ function routeFile(file,kind,taId){
 }
 async function sendFileImport(file,kind){
   const outEl=$(kind==="invoices"?"up-inv-out":"up-pay-out");
+  const dropEl=$(kind==="invoices"?"drop-inv":"drop-pay");
+  if(dropEl)dropEl.classList.add("busy");
+  outEl.innerHTML=`<div class="upq"><canvas class="orb" data-orb="searching" data-orb-size="28" role="img" aria-label="Reading file"></canvas><span class="fn">${esc(file.name)}</span><span>${(file.size/1024).toFixed(1)} KB</span>${pill("Reading and importing","info")}</div>`;
+  if(window.orbSync)orbSync();
   try{
     const b64=await fileToB64(file);
     const d=await api("/api/v1/import/file",{method:"POST",body:JSON.stringify({kind,filename:file.name,content_b64:b64,mode:"replace"})});
@@ -559,7 +600,8 @@ async function sendFileImport(file,kind){
       outEl.innerHTML=`<div class="msg"><b>Remittance read from ${esc(file.name)}</b> (${esc(d.extracted_via)}) and staged as <b>${esc(d.staged)}</b>: ${esc(f.payer||"Unknown payer")}, <b>${money(f.amount_cents||0)}</b>, references ${refs.length?refs.map(esc).join(", "):"none found"}. ${v.verified?pill("References verified against the ledger","ok"):pill("Some references are not in the ledger - flagged, never guessed","warn")} ${pill(d.source==="gemini"?"Extracted by Gemini":"Deterministic extraction - "+aiWhy(d),"info")}<br><br>Staged in the workspace - run it from the banner above or the Run page, with the rest of the case.</div>`;
       await refreshWorkspace(); showHandoff();
     }
-  }catch(e){ outEl.innerHTML=`<div class="msg">${esc(e.message)}</div>` }
+  }catch(e){ outEl.innerHTML=`<div class="upq">${pill("Import failed","bad")}<span class="fn">${esc(file.name)}</span><span>${esc(e.message)}</span></div>` }
+  finally{ if(dropEl)dropEl.classList.remove("busy") }
 }
 wireDrop("drop-inv","file-inv","csv-inv","invoices"); wireDrop("drop-pay","file-pay","csv-pay","payments");
 function mappingChips(m){const e=Object.entries(m||{});return e.length?e.map(([k,v])=>pill(`${esc(v)} → ${esc(k)}`,"info")).join(" "):"<small>No headers mapped.</small>"}
