@@ -329,6 +329,10 @@ async function loadScore(){
     const runs=await api("/api/v1/runs");
     if(!runs.length){ el.innerHTML=`<div class="emptycase"><b>No runs yet.</b><br>The case is staged; run it from Run Reconciliation and the scorecard computes from the stored run.</div>`; return }
     const latest=runs[0];
+    // The runs list carries counts, not a rate: derive touchless from the
+    // same fields the React dashboard uses (auto_posted of payments in the
+    // run summary), guarded so an empty run reads 0.0%, never NaN.
+    const touchless=latest.payments?((latest.auto_posted||0)/latest.payments*100):0;
     const matches=await api(`/api/v1/runs/${latest.run_id}/matches`);
     const decided=matches.length, staged=Math.max(w.staged_payments, decided);
     const resolution=staged?Math.round(decided/staged*1000)/10:0;
@@ -338,7 +342,7 @@ async function loadScore(){
     const hours=(auto.length*12/60).toFixed(1);
     el.innerHTML=`<div class="scoregrid">
       <div class="card"><div class="k">Autonomous resolution rate</div><div class="v">${resolution}%</div><div class="n">${decided} of ${staged} wires received a stored decision in the latest run (posted, held or refused with a reason); any wire left without a stored decision (for example the duplicate the guard blocked before matching) is the remainder</div></div>
-      <div class="card"><div class="k">Touchless auto-post rate</div><div class="v">${(latest.touchless_rate*100).toFixed(1)}%</div><div class="n">Payments posted with no human touch, of all payments in the run</div></div>
+      <div class="card"><div class="k">Touchless auto-post rate</div><div class="v">${touchless.toFixed(1)}%</div><div class="n">Payments posted with no human touch, of all payments in the run</div></div>
       <div class="card"><div class="k">Cash posted by the agent</div><div class="v">${money(cash)}</div><div class="n">Net applied on auto-posted matches in the latest run</div></div>
       <div class="card"><div class="k">Recovery in flight (EV)</div><div class="v">$${ev.toLocaleString("en-US",{maximumFractionDigits:0})}</div><div class="n">Expected value of the dispute claims the Deduction Agent opened</div></div>
       <div class="card"><div class="k">Analyst hours returned</div><div class="v">${hours} h</div><div class="n">${auto.length} auto-posted payments x 12 minutes manual benchmark (a labelled assumption)</div></div>

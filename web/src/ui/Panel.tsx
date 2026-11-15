@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 
-/** The product's panel surface at finish-pass grade: gradient ground,
-    hairline border in white alpha, a soft top highlight and shadow. */
+/** The product's panel surface: true glass since the Stack Glass
+    pass (15 Nov 2026). The recipe lives once in index.css as
+    .glass-panel (translucent panel ground, backdrop blur over the
+    hairline texture and the lit ground, top-edge light line, deep
+    soft shadow, hover lift); this component adds the brighter
+    hairline border and the panel's padding and title structure.
+    Tables (DataTable) inherit their glass from this container. */
 export default function Panel({
   title,
   sub,
@@ -15,12 +20,7 @@ export default function Panel({
 }) {
   return (
     <section
-      className={`rounded-md border border-white/[0.07] p-4 sm:p-5 ${className}`}
-      style={{
-        background: "linear-gradient(180deg,#2d2d2e,#272727)",
-        boxShadow:
-          "inset 0 1px 0 rgba(255,255,255,.04), 0 4px 14px rgba(0,0,0,.28)",
-      }}
+      className={`glass-panel rounded-md border border-white/[0.11] p-4 sm:p-5 ${className}`}
     >
       {title && (
         <h3 className="font-display text-[15px] font-semibold text-ink m-0">

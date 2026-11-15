@@ -4,7 +4,8 @@ import Sparkline from "./Sparkline";
 /** The Obsidian-pattern metric card: label, a number that rolls up on
     load, an optional delta pill (coloured by whether the move is good,
     not just by direction), a sparkline of the real series, and a note
-    that explains the number. */
+    that explains the number. The surface is the kit's glass card
+    (.glass-card in index.css, the Stack Glass pass). */
 export default function StatCard({
   label,
   value,
@@ -28,14 +29,7 @@ export default function StatCard({
 }) {
   const rolled = useRollUp(value ?? 0, format);
   return (
-    <div
-      className="rounded-md border border-white/[0.07] p-4 flex flex-col gap-1 min-w-0"
-      style={{
-        background: "linear-gradient(180deg,#2e2e2f,#252526)",
-        boxShadow:
-          "inset 0 1px 0 rgba(255,255,255,.05), 0 4px 14px rgba(0,0,0,.25)",
-      }}
-    >
+    <div className="glass-card rounded-md border border-white/[0.11] p-4 flex flex-col gap-1 min-w-0">
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
           {label}

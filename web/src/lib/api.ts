@@ -79,6 +79,7 @@ export interface MatchRecord {
     lines?: MatchLine[];
     latency_ms?: number;
     auto_posted?: boolean;
+    status?: string;
     deduction?: {
       autonomous_action?: string;
       expected_recovery_value_usd?: number;

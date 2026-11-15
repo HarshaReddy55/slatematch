@@ -151,6 +151,54 @@ def test_sections_are_siblings_never_nested():
     assert p.open_sections == [], f"unclosed sections: {p.open_sections}"
 
 
+def test_sections_live_inside_main():
+    # Regression (fix pack, 13 Nov 2026): two stray </div> closers at the
+    # end of the Policy Studio section closed <main> and its wrapper div
+    # in the browser's tree construction, so every section from
+    # Evaluations onward was re-parented outside <main>. go() toggles
+    # only "main section" elements, so Methodology, Architecture and
+    # Product Thinking could never display. The sibling test above cannot
+    # see this class: the sections stay siblings of each other, just
+    # under the wrong parent. Assert the parsed ancestor chain of every
+    # section includes <main>.
+    from html.parser import HTMLParser
+    VOID = {"meta", "link", "br", "hr", "img", "input", "source", "wbr",
+            "col", "area", "base", "embed", "track", "param"}
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack = []
+            self.inside = {}
+
+        def handle_starttag(self, tag, attrs):
+            if tag in VOID:
+                return
+            if tag == "section":
+                self.inside[dict(attrs).get("id")] = "main" in self.stack
+            self.stack.append(tag)
+
+        def handle_startendtag(self, tag, attrs):
+            if tag == "section":
+                self.inside[dict(attrs).get("id")] = "main" in self.stack
+
+        def handle_endtag(self, tag):
+            if tag in VOID or tag not in self.stack:
+                return
+            while self.stack and self.stack[-1] != tag:
+                self.stack.pop()
+            self.stack.pop()
+
+    p = P()
+    p.feed(client.get("/").text)
+    expected = ["dash", "cases", "upload", "run", "sap", "mail", "ledger",
+                "forecast", "policy", "eval", "health", "method", "arch",
+                "product"]
+    assert sorted(p.inside) == sorted(expected), sorted(p.inside)
+    outside = [sid for sid, ok in p.inside.items() if not ok]
+    assert outside == [], f"sections parsed outside <main>: {outside}"
+
+
 def test_v31_staged_lifecycle_contract():
     """v31: loading stages, execution is explicit and visible. The shell
     carries the readiness/gate helpers, the persistent agent strip with

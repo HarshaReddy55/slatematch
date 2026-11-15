@@ -142,6 +142,16 @@
 
 <section id="sap"><div class="vhead"><div><div class="eyebrow">OPERATE — 05 / SAP BAPI &amp; EBRR</div><h2>SAP BAPI &amp; EBRR</h2><div class="purpose">Balanced DZ clearing documents and the ASC 606 dispute reserve, generated from stored matches. No live ERP is connected.</div></div>
 </div>
+<div id="sap-state"></div>
+<div class="cards" style="grid-template-columns:repeat(4,1fr)">
+<div class="card"><div class="k">Documents generated</div><div class="v" id="sap-t-docs">-</div><div class="n">One DZ clearing document per cleared payment in the latest run</div></div>
+<div class="card"><div class="k">Balanced journal total</div><div class="v" id="sap-t-total">-</div><div class="n">Total debits = total credits across the run's documents</div></div>
+<div class="card"><div class="k">Document type</div><div class="v" style="font-size:16.5px;padding-top:7px">DZ - customer payment</div><div class="n">BAPI_ACC_DOCUMENT_POST, SAP S/4HANA shape</div></div>
+<div class="card"><div class="k">ASC 606 dispute reserve</div><div class="v" id="sap-t-reserve">-</div><div class="n">Claims reclassified to disputed receivables (GL 121500), revenue untouched</div></div>
+</div>
+<div class="panel"><h3>Debit vs credit - the GL posting table</h3><div class="d">Pick a cleared payment; its journal is grouped by GL account below, and its full payload is open underneath.</div><div id="sap-chips"></div><div id="sap-table"><small>Run a case and its documents appear here.</small></div><div id="sap-note"></div></div>
+<div class="panel"><h3>BAPI_ACC_DOCUMENT_POST payload</h3><div class="d">The exact JSON the ERP would receive for the selected payment.</div><p><button class="btn ghost small" onclick="copySapPayload(this)">Copy payload</button></p><pre class="jsonbox" id="sap-payload">No document selected yet.</pre></div>
+<div class="panel"><h3>ASC 606 / IFRS 15 EBRR - dispute reserve journal</h3><div id="sap-reserve"><small>No dispute claims in the latest run.</small></div></div>
 </section>
 <section id="mail">
 <div class="vhead"><div><div class="eyebrow">INSIGHT & GOVERNANCE — 08 / OUTBOUND MAIL HUB</div><h2>Outbound Mail Hub</h2></div>
@@ -204,7 +214,6 @@
 
 <div class="panel"><div id="policy-form"><div class="skl"><i></i><i></i><i></i></div></div>
 <p><button class="btn" onclick="savePolicy(this)">Save policy</button> <button class="btn ghost" onclick="previewPolicy(this)">Preview impact on the active run</button> <small id="policy-src"></small></p><div id="policy-preview"></div></div>
-</div></div>
 
 </section>
 <section id="eval">

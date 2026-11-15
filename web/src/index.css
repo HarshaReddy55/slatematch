@@ -1,7 +1,10 @@
 /* Tailwind v4, theme + utilities ONLY. No preflight: its resets would
    break the vanilla pages while the two stacks coexist (Stage 0-3).
    Tokens are mapped 1:1 from frontend/css/livecube.css :root so both
-   stacks render the same product. */
+   stacks render the same product. The exceptions are React-only and
+   marked as such: --color-ground (the deepened shell ground for the
+   glass pass) and the .glass-* recipe below. Vanilla CSS is never
+   touched by this file. */
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
@@ -23,14 +26,126 @@
   --color-warnbg: rgba(242, 193, 78, 0.13);
   --color-bad: #e5484d;
   --color-badbg: rgba(229, 72, 77, 0.13);
+  /* React-only: the deepened ground the glass sits on (one step
+     darker than --color-bg toward charcoal). The vanilla app keeps
+     #232323; this token exists only in the React stylesheet. */
+  --color-ground: #1e1e1f;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 body {
-  background: var(--color-bg);
+  background-color: var(--color-ground);
+  /* Two fixed layers. Top: the lit ground for the glass pass, a
+     STATIC radial glow in the product blue, strongest above the
+     viewport's top edge and gone by mid-viewport. It never animates:
+     no breathing, pulsing or drifting, per the adaptation ledger.
+     Bottom: the vanilla vertical hairline texture, carried over
+     exactly (livecube.css body::before, repeating-linear-gradient
+     90deg, rgba(255,255,255,.025) 0 1px, transparent 1px 9px), fixed
+     behind the panels. As body background layers they sit behind
+     every block by construction, with no z-index risk to the React
+     surfaces, and the glass panels blur both layers beneath them. */
+  background-image:
+    radial-gradient(
+      1100px 520px at 50% -160px,
+      rgba(61, 117, 232, 0.13),
+      rgba(61, 117, 232, 0.05) 42%,
+      rgba(61, 117, 232, 0) 70%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 1px 9px
+    );
+  background-attachment: fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
   margin: 0;
+}
+
+/* The glass recipe (Stack Glass pass, 15 Nov 2026, GLASS.md has the
+   full record). One source, consumed by the kit surfaces (Panel,
+   StatCard, the DataTable's Panel container, LoadError) and by the
+   two view-level card duplicates (Health MiniCard, Eval accuracy
+   cards) so no view hand-scatters its own surface style. A glass
+   surface is the panel colour at reduced alpha over a backdrop blur:
+   the hairline texture and the lit ground soften visibly beneath it,
+   a 1px top-edge light line and a brighter hairline border draw the
+   edge, and a soft deep shadow separates it from the ground. On
+   hover the surface lifts physically (-2px, deepening shadow) on
+   the motion system's EASE_OUT curve: the template's folder lift,
+   kept subtle and functional. The gradient stops are the flat
+   build's own panel colours at 0.87 to 0.91 alpha, set by the
+   legibility gate recorded in GLASS.md: the settled composite
+   matches the flat build's luminance, so small text on glass reads
+   exactly as clean as it did on the flat build, and the glass
+   effect is carried by the blur, the light line and the shadow. */
+.glass-panel {
+  background: linear-gradient(
+    180deg,
+    rgba(45, 45, 46, 0.88),
+    rgba(39, 39, 39, 0.91)
+  );
+  -webkit-backdrop-filter: blur(12px) saturate(1.12);
+  backdrop-filter: blur(12px) saturate(1.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 32px rgba(0, 0, 0, 0.36);
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-panel:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 18px 44px rgba(0, 0, 0, 0.46);
+}
+.glass-card {
+  background: linear-gradient(
+    180deg,
+    rgba(46, 46, 47, 0.87),
+    rgba(37, 37, 38, 0.9)
+  );
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+  backdrop-filter: blur(10px) saturate(1.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 28px rgba(0, 0, 0, 0.34);
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 16px 38px rgba(0, 0, 0, 0.44);
+}
+
+/* The press response for interactive elements that lead somewhere
+   (the Agent Health status bars are buttons): a small scale on
+   press, same easing family as the rest of the system. */
+.pressable {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-panel,
+  .glass-card,
+  .pressable {
+    transition: none;
+  }
+  .glass-panel:hover,
+  .glass-card:hover {
+    transform: none;
+  }
+  .pressable:active {
+    transform: none;
+  }
 }
