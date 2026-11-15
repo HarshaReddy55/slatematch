@@ -365,3 +365,77 @@ def test_v58_approval_and_upload_states_contract():
     assert 'Import failed' in operate
     css = client.get("/css/livecube.css").text
     assert ".appr-row" in css and ".upq" in css and ".drop.busy" in css
+
+
+# ---- Stage 3 (React operate core) contracts ----
+# The Stage 3 views live in web/src; these contracts pin the wiring
+# that parity depends on: the shell registers the six views with
+# their vanilla nav numbers, every view talks to the same endpoints
+# with the same payloads as the vanilla frontend, run execution uses
+# the SSE stream, and no em dash ships in the new sources.
+
+def _web_src(rel):
+    p = os.path.join(os.path.dirname(__file__), "..", "..", "web", "src", *rel.split("/"))
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_stage3_shell_registers_operate_views():
+    app = _web_src("App.tsx")
+    for num, label in (("02", "Use Cases"), ("03", "Upload Center"),
+                       ("04", "Run Reconciliation"), ("05", "SAP BAPI & EBRR"),
+                       ("08", "Outbound Mail Hub")):
+        assert f'num: "{num}"' in app and label in app, (num, label)
+
+
+def test_stage3_run_execution_contract():
+    run = _web_src("views/Run.tsx")
+    assert '"/api/v1/runs/stream"' in run and "use_workspace: true" in run
+    assert '"/api/v1/batches"' in run and "idempotency_key" in run
+    assert "authHeaders()" in run  # the stream fetch carries the session contract
+    for etype in ("batch_start", "payment_start", "resolved", "solved",
+                  "deduction", "decision", "batch_done"):
+        assert f'"{etype}"' in run, etype
+
+
+def test_stage3_approvals_decision_contract():
+    appr = _web_src("views/Approvals.tsx")
+    assert "/api/v1/matches/" in appr and "/decision" in appr
+    assert '"approve"' in appr and '"reject"' in appr
+    # refusals are never bulk-decided: selection exists only on solved rows
+    assert "refusal" in appr and "selected" in appr
+
+
+def test_stage3_upload_endpoints_contract():
+    up = _web_src("views/Upload.tsx")
+    for path in ("/api/v1/invoices/import", "/api/v1/payments/import",
+                 "/api/v1/import/file", "/api/v1/parse",
+                 "/api/v1/workspace/stage-payment",
+                 "/api/v1/invoices/seed-referenced"):
+        assert path in up, path
+
+
+def test_stage3_sap_and_mail_endpoints_contract():
+    sap = _web_src("views/Sap.tsx")
+    assert "/api/v1/erp/run-documents" in sap
+    mail = _web_src("views/Mail.tsx")
+    assert "/api/v1/mail/hub" in mail and "/api/v1/mail/reminder" in mail
+    lib = _web_src("lib/operate.ts")
+    assert '"/api/v1/mail/send"' in lib
+    for kind in ("dispute_claim", "chase", "settlement_confirmation",
+                 "collection_reminder"):
+        assert kind in lib, kind
+
+
+def test_stage3_cases_endpoints_contract():
+    cases = _web_src("views/Cases.tsx")
+    assert "/api/v1/scenarios" in cases
+    assert "/load" in cases and "/api/v1/workspace/load-custom" in cases
+
+
+def test_stage3_sources_have_no_em_dashes():
+    for rel in ("App.tsx", "lib/operate.ts", "ui/SlideOver.tsx",
+                "ui/Stage3.tsx", "views/Run.tsx", "views/Approvals.tsx",
+                "views/Upload.tsx", "views/Sap.tsx", "views/Cases.tsx",
+                "views/Mail.tsx", "views/MatchDetail.tsx", "views/Desk.tsx"):
+        assert "\u2014" not in _web_src(rel), rel

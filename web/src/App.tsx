@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import Dashboard from "./views/Dashboard";
+import Cases from "./views/Cases";
+import Upload from "./views/Upload";
+import Run from "./views/Run";
+import Sap from "./views/Sap";
 import Ledger from "./views/Ledger";
 import Forecast from "./views/Forecast";
+import Mail from "./views/Mail";
 import Eval from "./views/Eval";
 import Health from "./views/Health";
 import { NAV_SPRING } from "./ui/motion";
@@ -28,12 +33,27 @@ import { NAV_SPRING } from "./ui/motion";
    ambience (the template's breathing beam, drifting specks) stays
    refused. Reduced motion collapses the spring to zero duration. */
 
-export type ViewKey = "dash" | "ledger" | "forecast" | "eval" | "health";
+export type ViewKey =
+  | "dash"
+  | "cases"
+  | "upload"
+  | "run"
+  | "sap"
+  | "ledger"
+  | "forecast"
+  | "mail"
+  | "eval"
+  | "health";
 
 const VIEWS: { key: ViewKey; num: string; label: string }[] = [
   { key: "dash", num: "01", label: "Dashboard" },
+  { key: "cases", num: "02", label: "Use Cases" },
+  { key: "upload", num: "03", label: "Upload Center" },
+  { key: "run", num: "04", label: "Run Reconciliation" },
+  { key: "sap", num: "05", label: "SAP BAPI & EBRR" },
   { key: "ledger", num: "06", label: "Ledger" },
   { key: "forecast", num: "07", label: "Forecast and Collections" },
+  { key: "mail", num: "08", label: "Outbound Mail Hub" },
   { key: "eval", num: "10", label: "Evaluations" },
   { key: "health", num: "11", label: "Agent Health" },
 ];
@@ -116,8 +136,13 @@ export default function App() {
         </nav>
 
         {view === "dash" && <Dashboard />}
+        {view === "cases" && <Cases />}
+        {view === "upload" && <Upload />}
+        {view === "run" && <Run />}
+        {view === "sap" && <Sap />}
         {view === "ledger" && <Ledger />}
         {view === "forecast" && <Forecast />}
+        {view === "mail" && <Mail />}
         {view === "eval" && <Eval />}
         {view === "health" && <Health />}
 
