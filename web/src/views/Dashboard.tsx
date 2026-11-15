@@ -23,13 +23,15 @@ import Pill from "../ui/Pill";
 import StatCard from "../ui/StatCard";
 import Button from "../ui/Button";
 import Orb from "../ui/Orb";
+import SessionsPanel from "../ui/SessionsPanel";
 import { RefreshFade, Rise, TitleRise } from "../ui/motion";
 
 /* Stage 1: the Dashboard, migrated. Same endpoints, same computation
    rules as the vanilla dashboard (lib/dashboard.ts mirrors them line
    for line); the finish is the Obsidian pattern - metric cards with
    roll-up numbers, delta pills and sparklines over the real per-run
-   series. Everything else still lives in the vanilla app at /. */
+   series. Stage 4 adds the session saves panel below the run
+   history, in the same place vanilla keeps it. */
 
 const pct1 = (v: number) => v.toFixed(1) + "%";
 const int = (v: number) => String(Math.round(v));
@@ -101,7 +103,11 @@ async function loadDashboard(): Promise<DashData> {
   };
 }
 
-export default function Dashboard() {
+export default function Dashboard({
+  toast,
+}: {
+  toast: (m: string) => void;
+}) {
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState("");
 
@@ -132,7 +138,7 @@ export default function Dashboard() {
             </h1>
           </TitleRise>
           <div className="flex gap-2">
-            <Button ghost href="/">
+            <Button ghost href="/vanilla/">
               Vanilla dashboard
             </Button>
             <Button onClick={load}>Refresh</Button>
@@ -151,9 +157,9 @@ export default function Dashboard() {
           <Panel title="Could not load the dashboard">
             <p className="text-sm text-bad mt-2 break-words">{error}</p>
             <p className="text-sm text-mut">
-              If this workspace is locked with an API key, set it in the
-              vanilla app first (ACCESS KEY, top right); both stacks share
-              the same browser key.
+              If this workspace is locked with an API key, set it with
+              ACCESS KEY in the shell above; both stacks share the same
+              browser key.
             </p>
           </Panel>
         )}
@@ -164,8 +170,7 @@ export default function Dashboard() {
               <p className="text-sm text-mut mt-1">
                 {data.ws.staged_payments || 0} wires waiting to run,{" "}
                 {money(data.ws.staged_payment_total_cents || 0)} staged. Run
-                the batch from Run Reconciliation in the vanilla app, then
-                refresh here.
+                the batch from Run Reconciliation, then refresh here.
               </p>
             </Panel>
           </Rise>
@@ -176,8 +181,8 @@ export default function Dashboard() {
             <Panel title="No runs yet in this workspace">
               <p className="text-sm text-mut mt-1">
                 This workspace is empty on purpose, nothing is preloaded.
-                Load the demo case or upload files in the vanilla app, run a
-                batch, and this dashboard fills with the same figures.
+                Load the demo case or upload files, run a batch, and this
+                dashboard fills with the same figures.
               </p>
             </Panel>
           </Rise>
@@ -367,6 +372,10 @@ export default function Dashboard() {
           </Panel>
           </Rise>
         )}
+
+        <Rise i={3}>
+          <SessionsPanel toast={toast} />
+        </Rise>
 
       </div>
     </>

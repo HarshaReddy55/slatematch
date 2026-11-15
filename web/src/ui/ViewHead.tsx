@@ -32,7 +32,7 @@ export default function ViewHead({
         )}
       </TitleRise>
       <div className="flex gap-2">
-        <Button ghost href="/">
+        <Button ghost href="/vanilla/">
           Vanilla app
         </Button>
         <Button onClick={onRefresh}>Refresh</Button>
@@ -46,9 +46,8 @@ export function LoadError({ error }: { error: string }) {
     <div className="glass-card rounded-md border border-white/[0.11] p-4">
       <p className="text-sm text-bad m-0 break-words">{error}</p>
       <p className="text-sm text-mut mt-2 mb-0">
-        If this workspace is locked with an API key, set it in the vanilla
-        app first (ACCESS KEY, top right); both stacks share the same
-        browser key.
+        If this workspace is locked with an API key, set it with ACCESS
+        KEY in the shell above; both stacks share the same browser key.
       </p>
     </div>
   );

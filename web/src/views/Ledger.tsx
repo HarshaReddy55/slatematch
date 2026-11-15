@@ -17,9 +17,10 @@ import { RefreshFade, Rise } from "../ui/motion";
 
 /* Stage 2: the Ledger, migrated. Endpoints and figures mirror
    loadLedger() + renderCube() + renderLedgerStaged() in the vanilla
-   insight.js / assist.js line for line (lib/insight.ts). Read-only:
-   the vanilla in-place cell editing is an Operate action and stays
-   in the vanilla app in this stage. */
+   insight.js / assist.js line for line (lib/insight.ts). Read-only
+   in React: the vanilla in-place cell editing is an Operate action
+   that still lives in the vanilla app (at /vanilla/ since the
+   Stage 4 flip). */
 
 interface LedgerData {
   inv: Invoice[];

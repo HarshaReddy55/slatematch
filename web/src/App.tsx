@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import Dashboard from "./views/Dashboard";
 import Cases from "./views/Cases";
@@ -8,30 +8,29 @@ import Sap from "./views/Sap";
 import Ledger from "./views/Ledger";
 import Forecast from "./views/Forecast";
 import Mail from "./views/Mail";
+import Policy from "./views/Policy";
 import Eval from "./views/Eval";
 import Health from "./views/Health";
 import { NAV_SPRING } from "./ui/motion";
+import Casebar from "./ui/Casebar";
+import Palette, { type PaletteActions } from "./ui/Palette";
+import Copilot from "./ui/Copilot";
+import DocsDrawer from "./ui/DocsDrawer";
+import KeyModal, { storedKey } from "./ui/KeyModal";
+import { api } from "./lib/api";
+import { downloadExport, requestShellRefresh } from "./lib/chrome";
+import { setIntent } from "./lib/operate";
 
-/* Stage 2 shell: one /react/ entry, hash routing across the migrated
-   views (Dashboard from Stage 1 plus the four Insight views). Hash
-   routing keeps the single StaticFiles entry and the shared session
-   contract: no server change, and a user can cross to the vanilla
-   app at / and back mid-workspace. The full chrome (sidebar, topbar,
-   palette) is Stage 4; this nav is the minimal Stage 2 form.
-
-   Motion and glass, adapted from the Stack Glass study on 15 Nov
-   2026 (see MOTION.md and GLASS.md): the active tab carries a
-   spring pill (Motion layoutId, NAV_SPRING physics) that glides
-   between tabs, and the tab bar itself is sticky glass: it stays
-   at the top of the viewport over scrolling content with a
-   translucent ground and backdrop blur. The first pass kept glass
-   to this bar alone; later the same day Harsha explicitly chose to
-   push the glass further, so the workspace panels and cards are
-   glass too, from the one recipe in index.css (.glass-panel /
-   .glass-card), over a deepened ground with a static blue glow.
-   The tab bar's glass deepens here to match that family. Animated
-   ambience (the template's breathing beam, drifting specks) stays
-   refused. Reduced motion collapses the spring to zero duration. */
+/* The shell. Stages 0-3: one /react/ entry, hash routing across the
+   migrated views, the spring nav pill and the glass tab bar (Stack
+   Glass pass). Stage 4 adds the chrome around the same shell: the
+   casebar with the verdict-only brief strip, the command palette,
+   the Copilot, the docs drawer and the access-key modal, plus the
+   Policy Studio view (09). The pill and the tab bar are untouched.
+   With the Stage 4 flip this shell is also the default at /; the
+   vanilla app stays reachable at /vanilla/ and both stacks share
+   the session contract (sessionStorage slatematch_session_id,
+   localStorage slate-key / slate-tenant, identical API headers). */
 
 export type ViewKey =
   | "dash"
@@ -42,6 +41,7 @@ export type ViewKey =
   | "ledger"
   | "forecast"
   | "mail"
+  | "policy"
   | "eval"
   | "health";
 
@@ -54,6 +54,7 @@ const VIEWS: { key: ViewKey; num: string; label: string }[] = [
   { key: "ledger", num: "06", label: "Ledger" },
   { key: "forecast", num: "07", label: "Forecast and Collections" },
   { key: "mail", num: "08", label: "Outbound Mail Hub" },
+  { key: "policy", num: "09", label: "Policy Studio" },
   { key: "eval", num: "10", label: "Evaluations" },
   { key: "health", num: "11", label: "Agent Health" },
 ];
@@ -63,10 +64,25 @@ function fromHash(): ViewKey {
   return (VIEWS.some((v) => v.key === h) ? h : "dash") as ViewKey;
 }
 
+const shellBtn =
+  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap self-center";
+
 export default function App() {
   const [view, setView] = useState<ViewKey>(fromHash);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [hasKey, setHasKey] = useState(() => !!storedKey());
+  const [toastMsg, setToastMsg] = useState("");
+  const toastTimer = useRef<number | null>(null);
   const reduce = useReducedMotion();
   const pillTransition = reduce ? { duration: 0 } : NAV_SPRING;
+
+  const toast = useCallback((m: string) => {
+    setToastMsg(m);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToastMsg(""), 3400);
+  }, []);
 
   useEffect(() => {
     const on = () => setView(fromHash());
@@ -74,9 +90,88 @@ export default function App() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
 
-  const go = (k: ViewKey) => {
+  useEffect(() => {
+    const on = () => setHasKey(!!storedKey());
+    window.addEventListener("slate:key-changed", on);
+    return () => window.removeEventListener("slate:key-changed", on);
+  }, []);
+
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    document.addEventListener("keydown", on);
+    return () => document.removeEventListener("keydown", on);
+  }, []);
+
+  const go = useCallback((k: ViewKey) => {
     if (window.location.hash !== `#/${k}`) window.location.hash = `/${k}`;
     setView(k);
+  }, []);
+
+  const paletteActions: PaletteActions = {
+    go: (k) => go(k as ViewKey),
+    seedAndRun: () => {
+      api("/api/v1/seed", { method: "POST" })
+        .then(() => {
+          setIntent("slate-run-live", "1");
+          go("run");
+          requestShellRefresh(true);
+        })
+        .catch((e) =>
+          toast(e instanceof Error ? e.message : String(e))
+        );
+    },
+    runLive: () => {
+      setIntent("slate-run-live", "1");
+      go("run");
+    },
+    jumpApprovals: () => go("run"),
+    exportPdf: () => {
+      downloadExport("/api/v1/export/bundle.pdf", "slatematch-audit-bundle.pdf").then(
+        (r) => toast(r.message)
+      );
+    },
+    exportCsv: () => {
+      downloadExport("/api/v1/export/matches.csv", "slatematch-matches.csv").then(
+        (r) => toast(r.message)
+      );
+    },
+    saveSession: () => {
+      api<{ save_id: string }>("/api/v1/session/save", {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+        .then((r) => {
+          toast(`Session saved - ID ${r.save_id}`);
+          requestShellRefresh();
+        })
+        .catch((e) =>
+          toast("Save failed: " + (e instanceof Error ? e.message : String(e)))
+        );
+    },
+    restoreSession: () => {
+      go("dash");
+      setTimeout(
+        () => window.dispatchEvent(new Event("slate:focus-session-input")),
+        60
+      );
+    },
+    openKey: () => setKeyOpen(true),
+    openDocs: () => setDocsOpen(true),
+    resetWorkspace: () => {
+      api("/api/v1/workspace/reset", { method: "POST" })
+        .then(() => {
+          toast("Workspace cleared - nothing is staged. Load a case to begin.");
+          requestShellRefresh(true);
+        })
+        .catch((e) =>
+          toast("Reset failed: " + (e instanceof Error ? e.message : String(e)))
+        );
+    },
   };
 
   return (
@@ -130,12 +225,28 @@ export default function App() {
             );
           })}
           <span className="flex-1" />
-          <span className="font-mono text-[10.5px] text-mut2 self-center tracking-[0.06em]">
+          <button className={shellBtn} onClick={() => setDocsOpen(true)} title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">
+            PRODUCT DOCS
+          </button>
+          <button className={shellBtn} onClick={() => setKeyOpen(true)} title="Set the API key this browser uses when this deployment is locked with keys">
+            {hasKey ? "ACCESS KEY: SET" : "ACCESS KEY"}
+          </button>
+          <button
+            className={shellBtn}
+            onClick={() => setPaletteOpen(true)}
+            title="Menu - jump to any view or action (Ctrl or Cmd + K)"
+            aria-label="Open menu"
+          >
+            MENU
+          </button>
+          <span className="font-mono text-[10.5px] text-mut2 self-center tracking-[0.06em] hidden xl:inline">
             AUTONOMOUS CASH APPLICATION AGENT
           </span>
         </nav>
 
-        {view === "dash" && <Dashboard />}
+        <Casebar view={view} toast={toast} />
+
+        {view === "dash" && <Dashboard toast={toast} />}
         {view === "cases" && <Cases />}
         {view === "upload" && <Upload />}
         {view === "run" && <Run />}
@@ -143,6 +254,7 @@ export default function App() {
         {view === "ledger" && <Ledger />}
         {view === "forecast" && <Forecast />}
         {view === "mail" && <Mail />}
+        {view === "policy" && <Policy toast={toast} />}
         {view === "eval" && <Eval />}
         {view === "health" && <Health />}
 
@@ -150,6 +262,26 @@ export default function App() {
           Every figure is computed live from this workspace's API responses.
         </p>
       </div>
+
+      <Palette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        views={VIEWS}
+        actions={paletteActions}
+      />
+      <DocsDrawer open={docsOpen} onClose={() => setDocsOpen(false)} />
+      <KeyModal open={keyOpen} onClose={() => setKeyOpen(false)} toast={toast} />
+      <Copilot />
+
+      {toastMsg && (
+        <div
+          className="glass-panel fixed left-1/2 bottom-6 z-[80] rounded-full border border-white/[0.11] px-4 py-2 text-[13px] text-ink"
+          style={{ transform: "translateX(-50%)" }}
+          role="status"
+        >
+          {toastMsg}
+        </div>
+      )}
     </main>
   );
 }

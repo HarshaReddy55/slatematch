@@ -86,9 +86,12 @@ def test_demo_tenant_switch_isolates_data():
 def test_navigation_is_the_fourteen_page_structure():
     """v28: the 6-step tour is retired. The shell carries Harsha's 14 pages
     in three named groups, in his order, and every page is its own section -
-    no composite step pages, no stepper, no next-step tour bar."""
+    no composite step pages, no stepper, no next-step tour bar.
+    Stage 4 note: the flip moved the vanilla app to /vanilla/ (React is
+    the root now), so this and the other vanilla contracts below fetch
+    the vanilla surface at its new path; assertions are unchanged."""
     import re
-    html = client.get("/").text
+    html = client.get("/vanilla/").text
     nav = re.findall(r'data-s="([a-z]+)"', html)
     assert nav == ["dash", "cases", "upload", "run", "sap", "ledger", "forecast", "mail",
                    "policy", "eval", "health",
@@ -111,16 +114,16 @@ def test_smooth_layer_contract():
     'Loading...' text placeholders, brief preference + Escape + gen-cached
     navigation + optimistic decisions wired in the scripts, and the CSS
     primitives (spinner, skeleton, row flash) present."""
-    html = client.get("/").text
+    html = client.get("/vanilla/").text
     assert 'id="loadbar"' in html and 'class="boot"' in html
     assert "<small>Loading" not in html
-    js = client.get("/js/state.js").text
+    js = client.get("/vanilla/js/state.js").text
     for token in ["slate-brief", "Escape", "jumpToApprovals", "LOADED_GEN",
                   "busyBtn", "bumpGen", "row-highlight-flash"]:
         assert token in js, token
-    assist = client.get("/js/assist.js").text
+    assist = client.get("/vanilla/js/assist.js").text
     assert "document staged for SAP" in assist and "Parked in suspense" in assist
-    css = client.get("/css/livecube.css").text
+    css = client.get("/vanilla/css/livecube.css").text
     for token in [".skeleton-line", ".skeleton-card", ".spin",
                   ".row-highlight-flash", "#loadbar", "prefers-reduced-motion"]:
         assert token in css, token
@@ -190,7 +193,7 @@ def test_sections_live_inside_main():
             self.stack.pop()
 
     p = P()
-    p.feed(client.get("/").text)
+    p.feed(client.get("/vanilla/").text)
     expected = ["dash", "cases", "upload", "run", "sap", "mail", "ledger",
                 "forecast", "policy", "eval", "health", "method", "arch",
                 "product"]
@@ -204,7 +207,7 @@ def test_v31_staged_lifecycle_contract():
     carries the readiness/gate helpers, the persistent agent strip with
     per-agent counts, the live-proof mutation, the quota-safe AI framing,
     and the current cache-bust stamps (v58 since the palette pass)."""
-    html = client.get("/").text
+    html = client.get("/vanilla/").text
     assert 'css/livecube.css?v=58' in html and 'js/state.js?v=58' in html
     # v32 declutter: no standalone Load demo case button anywhere, and the
     # author credit sits above the nav so it can never clip items 12-14
@@ -287,13 +290,13 @@ def test_v58_palette_and_motion_tokens_contract():
     with matched-character highlighting, the full action set (export, save,
     restore, access key, docs, reset), and Home/End cursor keys - not the
     old substring filter over views plus three actions."""
-    html = client.get("/").text
+    html = client.get("/vanilla/").text
     assert 'css/livecube.css?v=58' in html and 'js/assist.js?v=58' in html
-    css = client.get("/css/livecube.css").text
+    css = client.get("/vanilla/css/livecube.css").text
     assert "--ease-out:cubic-bezier(0.16, 1, 0.3, 1)" in css
     assert "--ease-drawer:cubic-bezier(0.32, 0.72, 0, 1)" in css
     assert "@keyframes cmdkIn" in css and "prefers-reduced-motion" in css
-    assist = client.get("/js/assist.js").text
+    assist = client.get("/vanilla/js/assist.js").text
     assert "function cmdkFuzzy" in assist and "function cmdkHi" in assist
     for label in ("Export audit and SAP bundle (PDF)", "Export matches as CSV",
                   "Save this session", "Restore a saved session",
@@ -324,27 +327,27 @@ def test_v58_thinking_orbs_contract():
     and the three working moments carry an orb canvas: Matching while a
     run streams (solving), the Copilot while it answers (listening), and
     the remittance parse while it reads (searching)."""
-    html = client.get("/").text
+    html = client.get("/vanilla/").text
     assert 'js/orbs.js?v=58' in html and 'type="module"' in html
-    bridge = client.get("/js/orbs.js").text
+    bridge = client.get("/vanilla/js/orbs.js").text
     assert "orbs-engine.js" in bridge and "orbSync" in bridge
     # density rule: the bridge always draws the engine's large (64) preset
     # and scales down, so the dot field never thins out at display size
     assert "RENDER = 64" in bridge and "resolvePreset(state, RENDER)" in bridge
-    engine = client.get("/js/vendor/orbs-engine.js")
+    engine = client.get("/vanilla/js/vendor/orbs-engine.js")
     assert engine.status_code == 200 and "MODE_FRAMES" in engine.text
-    operate = client.get("/js/operate.js").text
+    operate = client.get("/vanilla/js/operate.js").text
     assert '["solving","Solving"]' in operate  # Matching's orb, via AGENT_ORBS
     # the live agent strip puts each running agent's orb at the right of
     # its card header, with a state matched to that agent's work
     assert "AGENT_ORBS" in operate and 'class="anode-top"' in operate
-    assist = client.get("/js/assist.js").text
+    assist = client.get("/vanilla/js/assist.js").text
     assert 'data-orb="listening"' in assist and 'data-orb="searching"' in assist
     # the pending states use the reference composition: orb + state word
     # inside one pill, styled on platform tokens
     assert assist.count('class="orbpill"') >= 2
     assert "orbpend" in assist  # the pending pill sits on the panel ground, no bubble
-    css = client.get("/css/livecube.css").text
+    css = client.get("/vanilla/css/livecube.css").text
     assert ".orbpill" in css and "border-radius:999px" in css
     # finish pass: luminous orbs, gradient fills, elevated palette
     assert "drop-shadow" in css and "linearGradient" in operate
@@ -438,4 +441,96 @@ def test_stage3_sources_have_no_em_dashes():
                 "ui/Stage3.tsx", "views/Run.tsx", "views/Approvals.tsx",
                 "views/Upload.tsx", "views/Sap.tsx", "views/Cases.tsx",
                 "views/Mail.tsx", "views/MatchDetail.tsx", "views/Desk.tsx"):
+        assert "\u2014" not in _web_src(rel), rel
+
+
+# ---- Stage 4 (React chrome + the default flip) contracts ----
+# The Stage 4 surfaces live in web/src/ui + views/Policy.tsx; the
+# flip lives in frontend/ (root entry + vanilla/). These contracts
+# pin: the shell mounts the chrome, the palette keeps exactly two
+# groups, policy money is dollars at the surface and exact cents
+# on the wire, the access-key copy follows the true auth state,
+# the React views link to vanilla at /vanilla/, and the flipped
+# frontend tree keeps both entries intact.
+
+def _frontend(rel):
+    p = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", *rel.split("/"))
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_stage4_shell_mounts_chrome_and_policy():
+    app = _web_src("App.tsx")
+    for comp in ("Casebar", "Palette", "Copilot", "DocsDrawer", "KeyModal"):
+        assert comp in app, comp
+    assert '"09"' in app and '"Policy Studio"' in app
+    assert "slate:ws-refresh" in _web_src("lib/chrome.ts")
+
+
+def test_stage4_casebar_full_ids_and_verdict_only_brief():
+    bar = _web_src("ui/Casebar.tsx")
+    # the run id is never sliced in the React casebar
+    assert "run_id" in bar and ".slice(0, 13)" not in bar
+    # the brief strip carries the verdict line only, no mini tiles
+    assert 'aria-label="Case brief"' in bar
+    for tile in ("AUTO-POSTED CASH", "EXPECTED BACK FROM DISPUTES"):
+        assert tile not in bar, tile
+    chrome = _web_src("lib/chrome.ts")
+    assert "posted themselves" in chrome and "waiting for a person" in chrome
+
+
+def test_stage4_palette_two_groups():
+    pal = _web_src("ui/Palette.tsx")
+    assert '"Go to"' in pal and '"Actions"' in pal
+    assert "cmdkFuzzy" in _web_src("lib/chrome.ts")
+
+
+def test_stage4_policy_groups_and_money():
+    pol = _web_src("views/Policy.tsx")
+    for group in ("Posting", "Disputes", "Governance"):
+        assert group in pol, group
+    # cents fields display in dollars, the wire body stays exact cents
+    assert "Tolerance write-off ($)" in pol and "centsToDisplay" in pol
+    assert "Math.round(n * 100)" in pol
+    assert "/api/v1/policy/preview" in pol and '"/api/v1/policy"' in pol
+    # the spec sentence survives verbatim (JSX line wraps normalised)
+    assert "Changing this value changes the next run's behaviour; the run records the policy it used." in " ".join(pol.split())
+
+
+def test_stage4_access_key_copy_follows_auth_state():
+    km = _web_src("ui/KeyModal.tsx")
+    assert "This deployment is open - no API key is in force" in km
+    assert "This deployment is locked with API keys" in km
+    assert "/health" in km and "dev-open" not in km or "api-key" in km
+
+
+def test_stage4_sessions_and_copilot_endpoints():
+    sess = _web_src("ui/SessionsPanel.tsx")
+    for path in ("/api/v1/session/save", "/api/v1/session/restore", "/api/v1/session/saves"):
+        assert path in sess, path
+    cop = _web_src("ui/Copilot.tsx")
+    assert "/api/v1/copilot" in cop
+
+
+def test_stage4_vanilla_links_point_at_vanilla_path():
+    for rel in ("ui/ViewHead.tsx", "views/Dashboard.tsx"):
+        src = _web_src(rel)
+        assert 'href="/vanilla/"' in src, rel
+        assert 'href="/"' not in src, rel
+
+
+def test_stage4_flip_files():
+    root = _frontend("index.html")
+    assert "/react/assets/" in root
+    assert "SlateMatch - Autonomous Cash Application Agent" in root
+    assert "livecube.css" not in root
+    van = _frontend("vanilla/index.html")
+    assert "livecube.css" in van and "js/state.js" in van
+    assert "slatematch_session_id" in _frontend("vanilla/js/state.js")
+
+
+def test_stage4_sources_have_no_em_dashes():
+    for rel in ("lib/chrome.ts", "ui/Casebar.tsx", "ui/Copilot.tsx",
+                "ui/Palette.tsx", "ui/KeyModal.tsx", "ui/DocsDrawer.tsx",
+                "ui/SessionsPanel.tsx", "ui/Markdown.tsx", "views/Policy.tsx"):
         assert "\u2014" not in _web_src(rel), rel

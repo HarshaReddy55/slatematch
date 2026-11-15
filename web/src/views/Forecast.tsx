@@ -154,8 +154,7 @@ export default function Forecast() {
             {money(data.ws.open_invoice_total_cents || 0)}) and{" "}
             {data.ws.staged_payments} wires (
             {money(data.ws.staged_payment_total_cents || 0)}) are waiting. Run
-            the case from Run Reconciliation in the vanilla app, then refresh
-            here.
+            the case from Run Reconciliation, then refresh here.
           </p>
         </Panel>
         </Rise>
@@ -321,6 +320,7 @@ export default function Forecast() {
               </Reveal>
             </Panel>
 
+            <div className="flex flex-col gap-4 min-w-0">
             <Panel
               title="Collections priority queue"
               sub="Priority = gross x (1 + overdue days / 30) x (1 + max(predicted delay, 0) / 20), sorted descending. That formula is the whole ranking rule."
@@ -361,92 +361,6 @@ export default function Forecast() {
                 <p className="text-sm text-mut mb-0 mt-2">Nothing to collect.</p>
               )}
             </Panel>
-          </div>
-          </Rise>
-
-          {data.claims.length > 0 && (
-            <Rise i={2}>
-            <Panel
-              title="Dispute priority - from the active run"
-              sub="The Deduction Agent flagged these short-pays during reconciliation. Expected recovery is win probability x claim, minus the cost of fighting. The claim itself is dispatched from the Dispute desk in the vanilla app."
-            >
-              <DataTable
-                head={
-                  <>
-                    <Th>Payment</Th>
-                    <Th>Payer</Th>
-                    <Th>Claim</Th>
-                    <Th>Reason</Th>
-                    <Th>Win probability</Th>
-                    <Th>Expected recovery</Th>
-                  </>
-                }
-              >
-                {data.claims.map((cl) => (
-                  <Row key={cl.payment_id}>
-                    <Td className="font-mono text-[12px]">{cl.payment_id}</Td>
-                    <Td>{cl.payer}</Td>
-                    <Td className="font-mono text-[12px]">
-                      {money(cl.claimed_cents)}
-                    </Td>
-                    <Td>{cl.reason}</Td>
-                    <Td>{cl.win_probability}</Td>
-                    <Td className="font-mono text-[12px]">
-                      <b>
-                        $
-                        {cl.expected_recovery_usd.toLocaleString("en-US", {
-                          maximumFractionDigits: 2,
-                        })}
-                      </b>
-                    </Td>
-                  </Row>
-                ))}
-              </DataTable>
-            </Panel>
-            </Rise>
-          )}
-
-          <Rise i={3}>
-          <Panel title="Expected cash by customer">
-            {(f.customers || []).length ? (
-              <DataTable
-                head={
-                  <>
-                    <Th>Customer</Th>
-                    <Th>Invoices</Th>
-                    <Th>Open</Th>
-                    <Th>Overdue</Th>
-                    <Th>Expected 30d</Th>
-                    <Th>Expected 8 wks</Th>
-                    <Th>Avg pred. delay</Th>
-                  </>
-                }
-              >
-                {(f.customers || []).map((r) => (
-                  <Row key={r.customer}>
-                    <Td>{r.customer}</Td>
-                    <Td>{r.invoices}</Td>
-                    <Td className="font-mono text-[12px]">{money(r.open_cents)}</Td>
-                    <Td className="font-mono text-[12px]">
-                      {money(r.overdue_cents)}
-                    </Td>
-                    <Td className="font-mono text-[12px]">
-                      {money(r.expected_30_cents)}
-                    </Td>
-                    <Td className="font-mono text-[12px]">
-                      {money(r.expected_horizon_cents)}
-                    </Td>
-                    <Td>{r.avg_predicted_delay_days}d</Td>
-                  </Row>
-                ))}
-              </DataTable>
-            ) : (
-              <p className="text-sm text-mut mb-0 mt-2">No customers.</p>
-            )}
-          </Panel>
-          </Rise>
-
-          <Rise i={4}>
           <Panel title="What-if - a customer pays earlier or later">
             <div className="flex gap-4 items-end flex-wrap mt-2">
               <label className="text-[12px] text-mut">
@@ -547,7 +461,92 @@ export default function Forecast() {
               </p>
             )}
           </Panel>
+            </div>
+          </div>
           </Rise>
+
+          {data.claims.length > 0 && (
+            <Rise i={2}>
+            <Panel
+              title="Dispute priority - from the active run"
+              sub="The Deduction Agent flagged these short-pays during reconciliation. Expected recovery is win probability x claim, minus the cost of fighting. The claim itself is dispatched from the Dispute desk in Run Reconciliation."
+            >
+              <DataTable
+                head={
+                  <>
+                    <Th>Payment</Th>
+                    <Th>Payer</Th>
+                    <Th>Claim</Th>
+                    <Th>Reason</Th>
+                    <Th>Win probability</Th>
+                    <Th>Expected recovery</Th>
+                  </>
+                }
+              >
+                {data.claims.map((cl) => (
+                  <Row key={cl.payment_id}>
+                    <Td className="font-mono text-[12px]">{cl.payment_id}</Td>
+                    <Td>{cl.payer}</Td>
+                    <Td className="font-mono text-[12px]">
+                      {money(cl.claimed_cents)}
+                    </Td>
+                    <Td>{cl.reason}</Td>
+                    <Td>{cl.win_probability}</Td>
+                    <Td className="font-mono text-[12px]">
+                      <b>
+                        $
+                        {cl.expected_recovery_usd.toLocaleString("en-US", {
+                          maximumFractionDigits: 2,
+                        })}
+                      </b>
+                    </Td>
+                  </Row>
+                ))}
+              </DataTable>
+            </Panel>
+            </Rise>
+          )}
+
+          <Rise i={3}>
+          <Panel title="Expected cash by customer">
+            {(f.customers || []).length ? (
+              <DataTable
+                head={
+                  <>
+                    <Th>Customer</Th>
+                    <Th>Invoices</Th>
+                    <Th>Open</Th>
+                    <Th>Overdue</Th>
+                    <Th>Expected 30d</Th>
+                    <Th>Expected 8 wks</Th>
+                    <Th>Avg pred. delay</Th>
+                  </>
+                }
+              >
+                {(f.customers || []).map((r) => (
+                  <Row key={r.customer}>
+                    <Td>{r.customer}</Td>
+                    <Td>{r.invoices}</Td>
+                    <Td className="font-mono text-[12px]">{money(r.open_cents)}</Td>
+                    <Td className="font-mono text-[12px]">
+                      {money(r.overdue_cents)}
+                    </Td>
+                    <Td className="font-mono text-[12px]">
+                      {money(r.expected_30_cents)}
+                    </Td>
+                    <Td className="font-mono text-[12px]">
+                      {money(r.expected_horizon_cents)}
+                    </Td>
+                    <Td>{r.avg_predicted_delay_days}d</Td>
+                  </Row>
+                ))}
+              </DataTable>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">No customers.</p>
+            )}
+          </Panel>
+          </Rise>
+
         </>
       )}
     </>
