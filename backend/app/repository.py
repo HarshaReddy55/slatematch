@@ -35,6 +35,18 @@ CREATE TABLE IF NOT EXISTS workspace_meta(
 CREATE TABLE IF NOT EXISTS outbox(
   id INTEGER PRIMARY KEY AUTOINCREMENT, to_addr TEXT, subject TEXT, body TEXT,
   kind TEXT, ref_id TEXT, status TEXT, detail TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS promises(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id TEXT, customer TEXT,
+  amount_cents INTEGER, promised_date TEXT, note TEXT,
+  created_at TEXT);
+CREATE TABLE IF NOT EXISTS disputes(
+  dispute_id TEXT PRIMARY KEY, match_id TEXT, payment_id TEXT, payer TEXT,
+  claimed_cents INTEGER, expected_recovery_usd REAL, reason_code TEXT,
+  status TEXT DEFAULT 'OPEN', created_at TEXT, updated_at TEXT,
+  history_json TEXT);
+CREATE TABLE IF NOT EXISTS eval_snapshots(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, milp_accuracy REAL,
+  greedy_accuracy REAL, milp_exact_rate REAL, cases INTEGER);
 CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_matches_payment ON matches(payment_id);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
@@ -201,7 +213,13 @@ class Repository:
 
     def clear_workspace(self):
         with self._lock:
-            for t in ("invoices", "payments", "runs", "run_steps", "matches", "exceptions", "workspace_meta"):
+            # Disputes and promises belong to the workspace's dataset
+            # (they reference its invoices and payments), so they
+            # clear with it. Eval snapshots deliberately survive:
+            # they track the evaluations computation over time, not
+            # this dataset. The outbox and audit log are the tenant's
+            # record and also survive, as they always have.
+            for t in ("invoices", "payments", "runs", "run_steps", "matches", "exceptions", "workspace_meta", "disputes", "promises"):
                 self.conn.execute(f"DELETE FROM {t}")
             if getattr(self._local, "txn_depth", 0) == 0:
                 self.conn.commit()
@@ -397,6 +415,95 @@ class Repository:
     def update_match(self, match_id, status, result):
         self._x("UPDATE matches SET status=?, result_json=? WHERE match_id=?",
                 (status, json.dumps(result), match_id))
+
+    def get_run(self, run_id):
+        r = self.conn.execute("SELECT run_id, kind, status, policy_json, created_at "
+                              "FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        if not r: return None
+        return {"run_id": r[0], "kind": r[1], "status": r[2],
+                "policy": json.loads(r[3]) if r[3] else {}, "created_at": r[4]}
+
+    def all_matches(self):
+        rows = self.conn.execute(
+            "SELECT match_id, run_id, payment_id, status, solver, residual_cents, "
+            "confidence, result_json FROM matches").fetchall()
+        return [{"match_id": r[0], "run_id": r[1], "payment_id": r[2], "status": r[3],
+                 "solver": r[4], "residual_cents": r[5], "confidence": r[6],
+                 "result": json.loads(r[7])} for r in rows]
+
+    def restore_invoice(self, invoice_id, gross_cents):
+        """Undo a settlement or reduction: the invoice returns to the
+        open ledger at the gross it carried before the decision."""
+        self._x("UPDATE invoices SET gross_cents=?, status='OPEN' WHERE invoice_id=?",
+                (int(gross_cents), invoice_id))
+
+    def update_match_if_status(self, match_id, from_statuses, status, result):
+        """Compare-and-set from any of `from_statuses` (the reversal
+        path's guard, mirroring update_match_if_proposed)."""
+        marks = ",".join("?" for _ in from_statuses)
+        cur = self._x(f"UPDATE matches SET status=?, result_json=? WHERE match_id=? "
+                      f"AND status IN ({marks})",
+                      (status, json.dumps(result), match_id, *from_statuses))
+        return cur.rowcount == 1
+
+    def add_promise(self, invoice_id, customer, amount_cents, promised_date, note, ts):
+        cur = self._x("INSERT INTO promises(invoice_id, customer, amount_cents, "
+                      "promised_date, note, created_at) VALUES (?,?,?,?,?,?)",
+                      (invoice_id, customer, int(amount_cents), promised_date, note or "", ts))
+        return cur.lastrowid
+
+    def list_promises(self):
+        rows = self.conn.execute(
+            "SELECT id, invoice_id, customer, amount_cents, promised_date, note, "
+            "created_at FROM promises ORDER BY id").fetchall()
+        return [{"id": r[0], "invoice_id": r[1], "customer": r[2],
+                 "amount_cents": r[3], "promised_date": r[4], "note": r[5],
+                 "created_at": r[6]} for r in rows]
+
+    def upsert_dispute(self, dispute_id, match_id, payment_id, payer, claimed_cents,
+                       expected_recovery_usd, reason_code, ts):
+        self._x("INSERT INTO disputes(dispute_id, match_id, payment_id, payer, "
+                "claimed_cents, expected_recovery_usd, reason_code, status, "
+                "created_at, updated_at, history_json) VALUES (?,?,?,?,?,?,?,'OPEN',?,?,?) "
+                "ON CONFLICT(dispute_id) DO NOTHING",
+                (dispute_id, match_id, payment_id, payer, int(claimed_cents),
+                 float(expected_recovery_usd or 0), reason_code or "", ts, ts,
+                 json.dumps([{"status": "OPEN", "at": ts, "note": "Claim generated by the run"}])))
+
+    def list_disputes(self):
+        rows = self.conn.execute(
+            "SELECT dispute_id, match_id, payment_id, payer, claimed_cents, "
+            "expected_recovery_usd, reason_code, status, created_at, updated_at, "
+            "history_json FROM disputes ORDER BY created_at").fetchall()
+        return [{"dispute_id": r[0], "match_id": r[1], "payment_id": r[2],
+                 "payer": r[3], "claimed_cents": r[4],
+                 "expected_recovery_usd": r[5], "reason_code": r[6],
+                 "status": r[7], "created_at": r[8], "updated_at": r[9],
+                 "history": json.loads(r[10]) if r[10] else []} for r in rows]
+
+    def get_dispute(self, dispute_id):
+        for d in self.list_disputes():
+            if d["dispute_id"] == dispute_id:
+                return d
+        return None
+
+    def update_dispute(self, dispute_id, status, history, ts):
+        self._x("UPDATE disputes SET status=?, history_json=?, updated_at=? "
+                "WHERE dispute_id=?",
+                (status, json.dumps(history), ts, dispute_id))
+
+    def add_eval_snapshot(self, ts, milp_accuracy, greedy_accuracy, milp_exact_rate, cases):
+        self._x("INSERT INTO eval_snapshots(ts, milp_accuracy, greedy_accuracy, "
+                "milp_exact_rate, cases) VALUES (?,?,?,?,?)",
+                (ts, float(milp_accuracy), float(greedy_accuracy),
+                 float(milp_exact_rate), int(cases)))
+
+    def list_eval_snapshots(self, limit=60):
+        rows = self.conn.execute(
+            "SELECT ts, milp_accuracy, greedy_accuracy, milp_exact_rate, cases "
+            "FROM eval_snapshots ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"ts": r[0], "milp_accuracy": r[1], "greedy_accuracy": r[2],
+                 "milp_exact_rate": r[3], "cases": r[4]} for r in reversed(rows)]
 
     def update_match_if_proposed(self, match_id, status, result):
         """Compare-and-set decision claim: the status change lands only

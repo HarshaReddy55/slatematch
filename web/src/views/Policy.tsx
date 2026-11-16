@@ -118,6 +118,25 @@ const GROUPS: { title: string; fields: Field[] }[] = [
         type: "fxrates",
       },
       {
+        key: "autonomy_level",
+        label: "Autonomy level",
+        why: "How much of a run's leftover work the autopilot may close on its own. Off: every decision is a human's. Assisted: after a run, proposed partial matches whose shortfall is within the tolerance write-off are resolved automatically. Autonomous: the cap rises to the autopilot cap below. Duplicates, unexplained wires and anything above the maker-checker threshold stay human at every level, and every autopilot resolution records the invoices' prior state so it can be reversed in one click from the match.",
+        formula: "0 = off, 1 = assisted (tolerance cap), 2 = autonomous (autopilot cap)",
+        type: "select",
+        options: [
+          { value: "0", label: "Off - humans decide" },
+          { value: "1", label: "Assisted - within tolerance" },
+          { value: "2", label: "Autonomous - up to the cap" },
+        ],
+      },
+      {
+        key: "autopilot_max_residual_cents",
+        label: "Autopilot cap at level 2 ($)",
+        why: "The largest shortfall the autopilot may resolve at the Autonomous level. The default $250 keeps it to small residuals; level 1 ignores this and uses the tolerance write-off instead.",
+        formula: "max |residual| the autopilot may close at level 2",
+        type: "cents",
+      },
+      {
         key: "partial_allocation_mode",
         label: "Partial payment allocation",
         why: "When an underpayment is approved, how its cash is spread across the matched invoices. Pro-rata shares the shortfall across every line. Oldest first settles the oldest invoice in full and leaves the balance on the newest, the way most AR policies read. Remittance-specified uses the per-invoice amounts the remittance itself states, spreading anything left pro-rata (and falling back to pro-rata when the remittance prices no line). Credit memos always net at face value first.",
@@ -199,7 +218,7 @@ export default function Policy({
     for (const f of ALL_FIELDS) {
       const raw = (values[f.key] ?? "").trim();
       if (f.type === "text" || f.type === "select") {
-        body[f.key] = raw;
+        body[f.key] = f.key === "autonomy_level" ? parseInt(raw || "0", 10) : raw;
         continue;
       }
       if (f.type === "fxrates") {

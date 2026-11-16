@@ -44,6 +44,29 @@ interface FcData {
   c: CollectionRow[];
   claims: DisputeClaim[];
   ws: WorkspaceFull;
+  preds: PredictionRow[];
+  expected14d: number;
+  promises: PromiseRow[];
+}
+
+interface PredictionRow {
+  invoice_id: string;
+  customer: string;
+  gross_cents: number;
+  expected_in_days: number;
+  expected_date: string;
+  prob_within_30: number;
+  within_14d: boolean;
+}
+
+interface PromiseRow {
+  id: number;
+  invoice_id: string;
+  customer: string;
+  amount_cents: number;
+  promised_date: string;
+  note: string;
+  status: "OPEN" | "KEPT" | "BROKEN";
 }
 
 interface McState {
@@ -69,6 +92,41 @@ export default function Forecast({
   const [wiError, setWiError] = useState("");
   const [mc, setMc] = useState<McState | null>(null);
   const mcRef = useRef<HTMLDivElement>(null);
+  const [promiseDates, setPromiseDates] = useState<Record<string, string>>({});
+
+  /* The collections agent acts: a promise to pay is logged against
+     the invoice (its kept/broken status is derived from the ledger
+     by the server, never asserted here), and a reminder can be
+     drafted by the agent straight into the Outbox. */
+  const logPromise = async (invoiceId: string) => {
+    const date = promiseDates[invoiceId];
+    if (!date) {
+      toast("Pick the promised date first");
+      return;
+    }
+    try {
+      await api("/api/v1/collections/act", {
+        method: "POST",
+        body: JSON.stringify({ invoice_id: invoiceId, action: "promise", promised_date: date }),
+      });
+      toast(`Promise logged for ${invoiceId} - due ${date}`);
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const agentRemind = async (invoiceId: string) => {
+    try {
+      await api("/api/v1/collections/act", {
+        method: "POST",
+        body: JSON.stringify({ invoice_id: invoiceId, action: "remind" }),
+      });
+      toast(`Reminder for ${invoiceId} drafted into the Outbox`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   /* draftReminder() (insight.js): the draft is composed by the
      server from the ledger row itself, then reviewed and sent from
@@ -141,10 +199,16 @@ export default function Forecast({
     setError("");
     setDrill(null);
     (async () => {
-      const [f, c, ws] = await Promise.all([
+      const [f, c, ws, preds, promises] = await Promise.all([
         api<ForecastData>("/api/v1/forecast"),
         api<CollectionRow[]>("/api/v1/collections"),
         api<WorkspaceFull>("/api/v1/workspace"),
+        api<{ state: string; expected: PredictionRow[]; expected_14d_cents: number }>(
+          "/api/v1/predictions"
+        ).catch(() => ({ state: "empty", expected: [] as PredictionRow[], expected_14d_cents: 0 })),
+        api<{ promises: PromiseRow[] }>("/api/v1/collections/promises")
+          .then((d) => d.promises || [])
+          .catch(() => [] as PromiseRow[]),
       ]);
       let claims: DisputeClaim[] = [];
       if (ws.latest_run) {
@@ -153,7 +217,12 @@ export default function Forecast({
         );
         claims = disputeClaims(Array.isArray(raw) ? raw : raw.matches || []);
       }
-      setData({ f, c, ws, claims });
+      setData({
+        f, c, ws, claims,
+        preds: preds.expected || [],
+        expected14d: preds.expected_14d_cents || 0,
+        promises,
+      });
       setWiCust((cur) => cur || (f.customers || [])[0]?.customer || "");
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -478,6 +547,25 @@ export default function Forecast({
                         >
                           Draft reminder
                         </button>
+                        <span className="inline-flex items-center gap-1.5 ml-2">
+                          <input
+                            type="date"
+                            className="glass-input border border-line rounded-none px-2 py-1 text-[12px] text-ink"
+                            value={promiseDates[r.invoice_id] || ""}
+                            onChange={(e) =>
+                              setPromiseDates((cur) => ({
+                                ...cur,
+                                [r.invoice_id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            className="mini-btn"
+                            onClick={() => logPromise(r.invoice_id)}
+                          >
+                            Log promise
+                          </button>
+                        </span>
                       </Td>
                     </Row>
                   ))}
@@ -487,6 +575,46 @@ export default function Forecast({
                 <p className="text-sm text-mut mb-0 mt-2">Nothing to collect.</p>
               )}
             </Panel>
+            {data.promises.length > 0 && (
+              <Panel
+                title="Promises to pay"
+                sub="Logged by the collections agent. Status is derived from the ledger: KEPT when the invoice settles, BROKEN when the date passes with it still open."
+              >
+                <DataTable
+                  head={
+                    <>
+                      <Th>Invoice</Th>
+                      <Th>Customer</Th>
+                      <Th>Amount</Th>
+                      <Th>Promised</Th>
+                      <Th>Status</Th>
+                      <Th>{""}</Th>
+                    </>
+                  }
+                >
+                  {data.promises.map((p) => (
+                    <Row key={p.id}>
+                      <Td className="font-mono text-[12px]">{p.invoice_id}</Td>
+                      <Td>{p.customer}</Td>
+                      <Td className="font-mono text-[12px]">{money(p.amount_cents)}</Td>
+                      <Td>{p.promised_date}</Td>
+                      <Td>
+                        <Pill kind={p.status === "KEPT" ? "ok" : p.status === "BROKEN" ? "bad" : "warn"}>
+                          {p.status}
+                        </Pill>
+                      </Td>
+                      <Td>
+                        {p.status !== "KEPT" && (
+                          <button className="mini-btn" onClick={() => agentRemind(p.invoice_id)}>
+                            Agent reminder
+                          </button>
+                        )}
+                      </Td>
+                    </Row>
+                  ))}
+                </DataTable>
+              </Panel>
+            )}
           <Panel title="What-if - a customer pays earlier or later">
             <div className="flex gap-4 items-end flex-wrap mt-2">
               <label className="text-[12px] text-mut">
@@ -702,6 +830,51 @@ export default function Forecast({
           )}
 
           <Rise i={3}>
+          <Panel
+            title="Expected receipts - pre-arrival view"
+            sub="Every open invoice on the residual ledger with the date the delay model expects it to land. The next 14 days are flagged; the total expected inside that window is the near-term cash the business can plan against."
+          >
+            {data.preds.length ? (
+              <>
+                <p className="text-[13px] mt-2 mb-0">
+                  Expected within 14 days: <b>{money(data.expected14d)}</b> across{" "}
+                  {data.preds.filter((r) => r.within_14d).length} invoice(s)
+                </p>
+                <DataTable
+                  head={
+                    <>
+                      <Th>Invoice</Th>
+                      <Th>Customer</Th>
+                      <Th>Amount</Th>
+                      <Th>Expected</Th>
+                      <Th>In</Th>
+                      <Th>P(within 30d)</Th>
+                      <Th>{""}</Th>
+                    </>
+                  }
+                >
+                  {data.preds.map((r) => (
+                    <Row key={r.invoice_id}>
+                      <Td className="font-mono text-[12px]">{r.invoice_id}</Td>
+                      <Td>{r.customer}</Td>
+                      <Td className="font-mono text-[12px]">{money(r.gross_cents)}</Td>
+                      <Td>{r.expected_date}</Td>
+                      <Td>{r.expected_in_days}d</Td>
+                      <Td>{Math.round(r.prob_within_30 * 100)}%</Td>
+                      <Td>{r.within_14d ? <Pill kind="info">NEXT 14D</Pill> : null}</Td>
+                    </Row>
+                  ))}
+                </DataTable>
+              </>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">
+                Nothing outstanding on the residual ledger.
+              </p>
+            )}
+          </Panel>
+          </Rise>
+
+          <Rise i={4}>
           <Panel title="Expected cash by customer">
             {(f.customers || []).length ? (
               <DataTable

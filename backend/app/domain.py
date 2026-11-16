@@ -61,10 +61,23 @@ class Policy:
     # payment may settle invoices of ONE other currency at these
     # rates and the difference posts as realised FX gain/loss.
     fx_rates: Dict[str, float] = field(default_factory=dict)
+    # Autonomy: 0 = off, every decision is a human's (the long-standing
+    # default). 1 = assisted: the autopilot resolves PROPOSED partial
+    # matches whose shortfall is within tolerance_writeoff_cents.
+    # 2 = autonomous: the cap rises to autopilot_max_residual_cents.
+    # Maker-checker holds and exceptions are never autopilot business
+    # at any level, and every resolution is reversible from its
+    # recorded pre-state.
+    autonomy_level: int = 0
+    autopilot_max_residual_cents: int = 25000
 
     def __post_init__(self):
         if self.partial_allocation_mode not in ("pro_rata", "fifo_oldest", "explicit_line"):
             raise ValueError("partial_allocation_mode must be pro_rata, fifo_oldest or explicit_line")
+        if self.autonomy_level not in (0, 1, 2):
+            raise ValueError("autonomy_level must be 0 (off), 1 (assisted) or 2 (autonomous)")
+        if int(self.autopilot_max_residual_cents) < 0:
+            raise ValueError("autopilot_max_residual_cents cannot be negative")
         for ccy, rate in (self.fx_rates or {}).items():
             if not (isinstance(ccy, str) and len(ccy) == 3 and ccy.isalpha() and ccy == ccy.upper()):
                 raise ValueError(f"fx_rates key {ccy!r} must be a 3-letter uppercase currency code")

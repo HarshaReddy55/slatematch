@@ -42,6 +42,28 @@ interface HealthData {
   audit: AuditEntry[];
   runs: RunSummary[];
   heldByRun: Record<string, number>;
+  profiles: BehaviourProfile[];
+  trend: EvalTrend | null;
+}
+
+interface BehaviourProfile {
+  payer: string;
+  payments: number;
+  posted: number;
+  auto_posted_share: number;
+  typical_bundle: number;
+  partial_share: number;
+  deduction_share: number;
+  duplicates: number;
+}
+
+interface EvalTrend {
+  snapshots: { ts: string; milp_accuracy: number; greedy_accuracy: number; cases: number }[];
+  baseline_accuracy: number;
+  latest_accuracy: number;
+  drift_points: number;
+  drift_flag: boolean;
+  basis: string;
 }
 
 const BAR_BG: Record<string, string> = {
@@ -83,10 +105,14 @@ export default function Health() {
         api<HealthFull>("/health"),
         api<ReadyData>("/ready"),
       ]);
-      const [diag, audit, runs] = await Promise.all([
+      const [diag, audit, runs, profiles, trend] = await Promise.all([
         api<Diagnostics>("/api/v1/diagnostics").catch(() => null),
         api<AuditEntry[]>("/api/v1/audit").catch(() => [] as AuditEntry[]),
         api<RunSummary[]>("/api/v1/runs").catch(() => [] as RunSummary[]),
+        api<{ profiles: BehaviourProfile[] }>("/api/v1/behaviour-profiles")
+          .then((d) => d.profiles || [])
+          .catch(() => [] as BehaviourProfile[]),
+        api<EvalTrend>("/api/v1/evaluations/trend").catch(() => null),
       ]);
       // Held counts come from each run's own matches payload (PROPOSED
       // rows), the same records the Status Bar colour rule reads.
@@ -105,7 +131,7 @@ export default function Health() {
           }
         })
       );
-      setData({ h, r, diag, audit, runs, heldByRun });
+      setData({ h, r, diag, audit, runs, heldByRun, profiles, trend });
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
@@ -386,6 +412,87 @@ export default function Health() {
           </Rise>
 
           <Rise i={5}>
+          <Panel
+            title="Payer behaviour"
+            sub="Computed from this workspace's own decided match history: how each payer bundles, underpays and claims. It annotates exceptions for triage; the solver reads none of it - learning proposes, math decides."
+          >
+            {data.profiles.length ? (
+              <DataTable
+                head={
+                  <>
+                    <Th>Payer</Th>
+                    <Th>Payments</Th>
+                    <Th>Auto-posted</Th>
+                    <Th>Typical bundle</Th>
+                    <Th>Partials</Th>
+                    <Th>Deductions</Th>
+                    <Th>Duplicates</Th>
+                  </>
+                }
+              >
+                {data.profiles.map((p) => (
+                  <Row key={p.payer}>
+                    <Td>{p.payer}</Td>
+                    <Td>{p.payments}</Td>
+                    <Td>{Math.round(p.auto_posted_share * 100)}%</Td>
+                    <Td>{p.typical_bundle || "-"}</Td>
+                    <Td>{Math.round(p.partial_share * 100)}%</Td>
+                    <Td>{Math.round(p.deduction_share * 100)}%</Td>
+                    <Td>{p.duplicates || "-"}</Td>
+                  </Row>
+                ))}
+              </DataTable>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">
+                No decided payments yet. Profiles appear once matches are posted or held.
+              </p>
+            )}
+          </Panel>
+          </Rise>
+
+          <Rise i={6}>
+          <Panel
+            title="Evaluation drift"
+            sub="The Evaluations computation, snapshotted once a day for this tenant and compared with its first snapshot. A drop of 2 or more accuracy points flags drift."
+          >
+            {data.trend ? (
+              <div className="mt-2">
+                <div className="flex gap-3 items-center flex-wrap text-[13px]">
+                  <span>
+                    Latest MILP accuracy{" "}
+                    <b>{(data.trend.latest_accuracy * 100).toFixed(1)}%</b>
+                  </span>
+                  <span className="text-mut">
+                    baseline {(data.trend.baseline_accuracy * 100).toFixed(1)}%
+                  </span>
+                  {data.trend.drift_flag ? (
+                    <Pill kind="bad">
+                      DRIFT {data.trend.drift_points.toFixed(1)} pts
+                    </Pill>
+                  ) : (
+                    <Pill kind="ok">
+                      {data.trend.drift_points >= 0 ? "+" : ""}
+                      {data.trend.drift_points.toFixed(1)} pts vs baseline
+                    </Pill>
+                  )}
+                  <span className="text-mut">
+                    {data.trend.snapshots.length} snapshot
+                    {data.trend.snapshots.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="text-[12px] text-mut leading-snug m-0 mt-2">
+                  {data.trend.basis}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">
+                Trend unavailable on this server.
+              </p>
+            )}
+          </Panel>
+          </Rise>
+
+          <Rise i={7}>
           <Panel
             title="Audit trail"
             sub="Runs, approvals, rejections and policy changes, written by the server when they occur. Entries cannot be edited from this interface."

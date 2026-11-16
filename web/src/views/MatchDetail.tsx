@@ -39,6 +39,32 @@ export default function MatchDetail({
   const [erpOpen, setErpOpen] = useState(false);
   const [erpDoc, setErpDoc] = useState<ErpPaymentDocument | null>(null);
   const [erpFailed, setErpFailed] = useState(false);
+  const [reversed, setReversed] = useState(false);
+  const [reverseNote, setReverseNote] = useState("");
+
+  /* One-click reversal of an autopilot resolution: the server
+     restores every line invoice to the gross recorded in the
+     resolution's pre-state snapshot and marks the match REVERSED.
+     Human decisions and solver auto-posts never show this - they
+     stand as posted. */
+  const doReverse = async () => {
+    if (!match.match_id) {
+      setReverseNote("This record carries no server match id to reverse against.");
+      return;
+    }
+    try {
+      const r = await api<{ restored_invoices: string[] }>(
+        `/api/v1/matches/${encodeURIComponent(match.match_id)}/reverse`,
+        { method: "POST" }
+      );
+      setReversed(true);
+      setReverseNote(
+        `Reversed. Restored to the open ledger: ${r.restored_invoices.join(", ")}. Lists refresh on reload.`
+      );
+    } catch (e) {
+      setReverseNote(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const rej = (res.reasoning?.rejections || []).filter((x) => x.invoice_id);
 
@@ -110,6 +136,29 @@ export default function MatchDetail({
           ? " A claimed deduction was applied and judged by deduction intelligence."
           : ""}
       </p>
+
+      {res.approval?.autopilot && match.status === "APPROVED_POSTED" && !reversed && (
+        <div className="glass-card rounded-none border border-line p-3.5">
+          <p className="text-[13px] leading-relaxed m-0">
+            <b>Resolved by the autopilot</b> (level {res.approval.autopilot.level},
+            shortfall {money(res.approval.autopilot.shortfall_cents)} within the{" "}
+            {money(res.approval.autopilot.cap_cents)} cap). {res.approval.autopilot.rule}.
+          </p>
+          <div className="mt-2.5 flex items-center gap-3">
+            <button className="mini-btn" onClick={doReverse}>
+              Reverse autopilot resolution
+            </button>
+            {reverseNote && <span className="text-[12px] text-mut">{reverseNote}</span>}
+          </div>
+        </div>
+      )}
+      {reversed && (
+        <div className="glass-card rounded-none border border-line p-3.5">
+          <p className="text-[13px] leading-relaxed m-0">
+            <b>REVERSED.</b> {reverseNote}
+          </p>
+        </div>
+      )}
 
       {ded && (
         <div className="glass-card rounded-none border border-line p-3.5">

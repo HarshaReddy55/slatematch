@@ -17,6 +17,14 @@ import {
 } from "../lib/operate";
 import { ErpServerDoc } from "./MatchDetail";
 import type { ErpPaymentDocument } from "../lib/operate";
+interface DisputeLifecycle {
+  dispute_id: string;
+  payment_id: string;
+  status: string;
+  age_days: number;
+  escalation_due: boolean;
+}
+
 import Panel from "../ui/Panel";
 import Pill, { type PillKind } from "../ui/Pill";
 import ViewHead, { LoadError } from "../ui/ViewHead";
@@ -96,6 +104,34 @@ export default function Mail() {
   } | null>(null);
   const [sapDoc, setSapDoc] = useState<ErpPaymentDocument | null>(null);
   const [sapOpen, setSapOpen] = useState(false);
+  const [lifecycle, setLifecycle] = useState<Record<string, DisputeLifecycle>>({});
+
+  /* The dispute lifecycle lives server-side (autonomy build): the
+     hub's dispute rows are the latest run's claims; their status,
+     age and escalation flag come from /api/v1/disputes, keyed by
+     payment. Transitions post back and refresh this map. */
+  const loadLifecycle = useCallback(() => {
+    api<{ disputes: DisputeLifecycle[] }>("/api/v1/disputes")
+      .then((d) => {
+        const by: Record<string, DisputeLifecycle> = {};
+        for (const x of d.disputes || []) by[x.payment_id] = x;
+        setLifecycle(by);
+      })
+      .catch(() => setLifecycle({}));
+  }, []);
+  useEffect(loadLifecycle, [loadLifecycle]);
+
+  const transitionDispute = async (disputeId: string, status: string) => {
+    try {
+      await api(`/api/v1/disputes/${disputeId}/transition`, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+      loadLifecycle();
+    } catch {
+      /* the lifecycle map simply stays as it was */
+    }
+  };
   const reduce = useReducedMotion();
   const seq = useRef(0);
   const focusDone = useRef(false);
@@ -559,6 +595,43 @@ export default function Mail() {
                                   </button>
                                 ))}
                               </div>
+                              {(() => {
+                                const lc = lifecycle[d.payment_id];
+                                if (!lc) return null;
+                                const terminal = lc.status === "WON" || lc.status === "LOST";
+                                return (
+                                  <div className="mt-3 border-t border-white/[0.06] pt-3">
+                                    <div className="flex gap-2 items-center flex-wrap text-[13px]">
+                                      <span className="text-mut">Lifecycle</span>
+                                      <Pill kind={lc.status === "WON" ? "ok" : lc.status === "LOST" ? "bad" : lc.escalation_due ? "bad" : "info"}>
+                                        {lc.status}
+                                      </Pill>
+                                      <span className="text-mut">
+                                        {lc.age_days}d open
+                                        {lc.escalation_due ? " - escalation due (14+ days)" : ""}
+                                      </span>
+                                    </div>
+                                    {!terminal && (
+                                      <div className="flex gap-1.5 flex-wrap mt-2">
+                                        {["SENT", "ACKNOWLEDGED", "ESCALATED", "WON", "LOST"].map((s) => (
+                                          <button
+                                            key={s}
+                                            className="mini-btn"
+                                            onClick={() => transitionDispute(lc.dispute_id, s)}
+                                          >
+                                            {s === "SENT" ? "Mark sent" : s === "ACKNOWLEDGED" ? "Acknowledged" : s === "ESCALATED" ? "Escalate" : s === "WON" ? "Book as won" : "Book as lost"}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {terminal && (
+                                      <p className="text-[12px] text-mut m-0 mt-2">
+                                        Outcome booked - the lifecycle is closed.
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </>
                           );
                         })()}

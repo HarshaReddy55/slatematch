@@ -690,6 +690,18 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                           "recommended_action": "Review counterfactuals and approve or reassign",
                           "detail": {"residual_cents": res.residual_cents,
                                      "payer": pay.payer_raw, "amount_cents": pay.amount_cents}}
+                    # Behaviour annotation: a known payer's history is
+                    # triage evidence, attached to the exception for
+                    # the analyst. It changes no decision (see
+                    # behaviour.py); a failure here must never fail
+                    # the run, so it is guarded like the drafts are.
+                    try:
+                        from behaviour import build_profiles, hint_for
+                        _hint = hint_for(pay.payer_raw, build_profiles(repo))
+                        if _hint:
+                            ex["detail"]["behaviour_hint"] = _hint
+                    except Exception:
+                        pass
                     repo.add_exception(run_id, pay.payment_id, ex["kind"], ex["severity"], ex["recommended_action"], ex["detail"])
                     exceptions.append(ex)
                 if ded:

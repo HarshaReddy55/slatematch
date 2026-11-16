@@ -141,6 +141,7 @@ export interface ReasoningData {
 }
 
 export interface StoredMatch extends MatchRecord {
+  match_id?: string;
   solver?: string;
   confidence?: number;
   result?: MatchRecord["result"] & {
@@ -152,7 +153,15 @@ export interface StoredMatch extends MatchRecord {
     derivation?: DerivationData;
     reasoning?: ReasoningData;
     payment?: PaymentFull;
-    approval?: { erp_document_id?: string };
+    approval?: {
+      erp_document_id?: string;
+      autopilot?: {
+        level: number;
+        cap_cents: number;
+        shortfall_cents: number;
+        rule: string;
+      };
+    };
   };
 }
 

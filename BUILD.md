@@ -1,89 +1,100 @@
-# Enterprise build pack v1 - all four items in one go
+# Autonomy build pack v1 - CUMULATIVE (includes the enterprise build)
 
-Built and verified 16 Nov 2026. Suite: 220 passed on a clean solo
-run (212 + 8 new in backend/tests/test_enterprise_build.py). Demo
-outcome unchanged. Logo untouched (served asset is the same
-logo-glass build as before).
+This pack supersedes the enterprise build pack v1: it contains
+every file that pack had, plus the autonomy build. Deploy THIS
+one; the earlier enterprise zip can be discarded. If you already
+deployed the enterprise pack, this one still applies cleanly on
+top (same files, newer frontend bundle).
 
-## 1. SAP BAPI full compliance (backend/app/erp_sap.py)
+Suite: 229 passed on a clean solo run (220 enterprise + 9 new).
+Demo outcome unchanged: 10 auto-posted of 16. Logo untouched
+(logo-glass-ygqXbPkV, byte-identical). Vanilla untouched.
 
-The BAPI_ACC_DOCUMENT_POST payload is now the full table shape:
-- DOCUMENTHEADER gains USERNAME, DOC_DATE, PSTNG_DATE, FISC_YEAR
-  and FIS_PERIOD from the posting date.
-- ACCOUNTGL carries only true G/L lines. The AR reconciliation
-  account (121000) never appears there (the RW602 rejection);
-  customer clearing posts through ACCOUNTRECEIVABLE with the
-  account as the line's assigned G/L, per invoice, plus
-  special-G/L-style customer lines for residual receivables
-  (121600) and on-account amounts (121900). Credit memos clear as
-  debit customer lines.
-- Every posting line has an ITEMNO_ACC, and CURRENCYAMOUNT
-  mirrors every ACCOUNTGL and ACCOUNTRECEIVABLE line under the
-  same number (CURR_TYPE "00", signed S/H, nets to zero).
-- EXTENSION2 carries the SlateMatch payment reference.
-The human-readable journal is unchanged.
+## Part 1 - the enterprise build (from the earlier pack note)
 
-## 2. Bank lockbox parsers (backend/app/lockbox.py, api.py)
+1. SAP BAPI full compliance (erp_sap.py): DOCUMENTHEADER carries
+   USERNAME, DOC_DATE, PSTNG_DATE, FISC_YEAR, FIS_PERIOD;
+   ACCOUNTGL holds only true G/L lines; AR-family accounts post
+   per invoice through ACCOUNTRECEIVABLE; ITEMNO_ACC on every
+   line; CURRENCYAMOUNT mirrors all lines, signed, netting to
+   zero; EXTENSION2 carries the payment reference.
+2. Bank lockbox parsers (new lockbox.py): BAI2, SWIFT MT940 and
+   ISO 20022 camt.054 dropped into Upload Center parse into
+   payments and reconcile like a CSV import. Credit entries
+   only, exact money, shared reference extractor.
+3. FX conversion: Policy.fx_rates (EUR=1.087 style) in Policy
+   Studio Governance. With rates on both sides a foreign wire
+   settles book-currency invoices at the policy rate; exact
+   matches post their SAP document in book currency with the
+   difference on GL 710100 (gain) / 710200 (loss). No rates =
+   the hard currency boundary, exactly as before.
+4. React views 12-14: Methodology, Architecture, Product
+   Thinking. Migration complete, 14 of 14.
 
-BAI2, SWIFT MT940 and ISO 20022 camt.054 files uploaded in the
-Upload Center (payments) are sniffed by extension or content
-before the CSV reader and parsed into staged payments that
-reconcile exactly like a payments CSV (response route "lockbox"
-with the format named). Credit entries only; amounts are exact
-(BAI2 integer cents, MT940 comma decimals, camt decimals);
-references come from the same extractor the CSV path uses. A
-file that looks like a bank file but yields no credits is
-refused with the reason, never silently dropped.
+## Part 2 - the autonomy build (new in this pack)
 
-## 3. FX conversion with gain/loss posting (domain.py, batch.py, erp_sap.py, Policy)
+5. Exception autopilot (new autonomy.py; Policy gains
+   autonomy_level and autopilot_max_residual_cents, edited in
+   Policy Studio Governance). Default level 0 = off: nothing
+   changes. Level 1 auto-resolves a run's PROPOSED partial
+   matches whose shortfall is within the tolerance write-off;
+   level 2 raises the cap to the autopilot cap ($250 default).
+   It requires solver confidence at or above the automation
+   threshold, and it never touches exceptions, refusal
+   verdicts, or any payment above the maker-checker threshold
+   (the amount is checked directly - partials carry no
+   maker-checker label, which the tests caught). A resolution
+   is the same act as a human approval, with the invoices'
+   pre-state snapshotted into the record.
+6. One-click reversal: POST /api/v1/matches/{id}/reverse,
+   surfaced on the match detail. Restores every invoice from
+   the snapshot, marks the match REVERSED (it drops out of
+   settled sets and ERP documents), audits both directions,
+   and refuses if a later posted decision already used one of
+   the invoices.
+7. Payer behaviour profiles (new behaviour.py): computed on
+   read from the workspace's decided history - bundle habits,
+   partial and deduction rates, duplicates. Shown on Agent
+   Health, and attached to NO_MATCH / residual exceptions as
+   a triage hint. The solver reads none of it: learning
+   proposes, math decides.
+8. Collections agent acts (Forecast & Collections): per-row
+   promise-to-pay logging with a date picker, agent reminder
+   drafts into the Outbox, and a Promises panel whose status
+   is derived from the ledger (KEPT on settlement, BROKEN
+   when the date passes). Workspace reset now clears disputes
+   and promises with the dataset; eval snapshots and the
+   outbox survive as tenant records.
+9. Dispute closed loop: every claim a run generates becomes a
+   lifecycle record (OPEN), with transitions Sent /
+   Acknowledged / Escalated / Won / Lost in the Mail Hub
+   dispute pane; Sent also drafts the claim letter; Won and
+   Lost are terminal outcome bookings; 14+ days open flags
+   escalation due.
+10. Pre-arrival predictions: an Expected receipts panel on
+    Forecast - per-invoice expected landing date from the
+    same forecast computation, next 14 days flagged with the
+    window total.
+11. Evaluation drift: Agent Health gains a drift panel -
+    one snapshot per tenant per day from the live evaluations
+    computation, flagged at a drop of 2+ accuracy points.
 
-- Policy Studio (Governance) gains "FX rates (USD value of
-  1 unit)", e.g. EUR=1.087. Stored on the tenant policy
-  (fx_rates), validated (3-letter codes, positive rates), and
-  merged on save like every other field.
-- With no rates (the default everywhere), currency remains a
-  hard matching boundary, exactly as before.
-- With rates for both sides, foreign-currency invoices enter a
-  payment's candidate pool as converted copies (Decimal half-up)
-  that keep their book gross and currency. Subsidiary filtering
-  still applies first.
-- When a cross-currency set balances exactly, the match records
-  its book-currency view, and its SAP document posts in BOOK
-  currency: cash at the wire's book value, AR at book gross, and
-  the realised difference on GL 710100 (FX gain) / 710200
-  (FX loss). Worked example in the tests: a $223.33 invoice
-  settled by a EUR 205.46 wire at 1.087 posts DR cash 22334 =
-  CR AR 22333 + CR FX gain 1.
-- Non-exact or mixed-book-currency FX matches keep the standard
-  payment-currency document.
+## Files
 
-## 4. React views 12-14 (web/src, App.tsx)
-
-Methodology, Architecture and Product Thinking are React views
-now; the migration is complete and the sidebar lists all 14.
-- Methodology reads GET /api/v1/methodology - the same endpoint
-  vanilla renders from - so the two stacks cannot drift.
-- Architecture carries vanilla's panels and tables plus the live
-  diagnostics panel from /api/v1/diagnostics. Lines that
-  described the pre-React, pre-hardening system (the vanilla UI,
-  the old test count, ECS Express, container-local data, the
-  pre-diet explainer count) are corrected to the current system
-  rather than copied stale; the request-path text also covers
-  the lockbox formats and the FX exception.
-- Product Thinking ports the success criteria and thesis; its
-  roadmap line no longer lists bank-file ingestion as a gap,
-  because item 2 above shipped it.
-Vanilla stays byte-identical at /vanilla/ as the reference.
+Backend: api.py, batch.py, domain.py, repository.py,
+erp_sap.py, lockbox.py (new), autonomy.py (new),
+behaviour.py (new); tests: test_enterprise_build.py,
+test_autonomy_build.py (new).
+Frontend source: App.tsx; views Methodology, Architecture,
+Product, Policy, Health, Forecast, Mail, MatchDetail;
+lib/operate.ts. Built frontend: frontend/react/ (bundle
+index-CFBbPZEt.js) + frontend/index.html re-copied.
 
 ## Deploy
 
-1. Copy the pack contents into your GitHub clone at the same
-   paths (backend/, web/, frontend/), overwriting.
-2. Standing reminder, still outstanding: delete the six dead
-   files in the clone if not yet done - frontend/css/livecube.css
-   and the five loose frontend/js/*.js files. Never
-   frontend/js/vendor/.
-3. Commit (suggested message: "Enterprise build: BAPI full
-   payload, lockbox parsers, FX conversion, React views 12-14"),
-   push.
-4. Update service slatematch-app with Force new deployment.
+Copy the files into your clone at the same paths, commit,
+push, then Update service slatematch-app with Force new
+deployment. Standing reminder, if still pending in your
+clone: delete the six dead files (frontend/css/livecube.css
+and the five loose frontend/js/*.js) - never
+frontend/js/vendor/.

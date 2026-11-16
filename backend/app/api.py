@@ -352,6 +352,32 @@ def _finish_run_outputs(repo, run):
             repo.update_step(run_id, "Briefing Agent", "COMPLETED", ms, ev)
         except Exception:
             pass
+    # Bounded post-run automation, under the policy snapshot the run
+    # itself ran with: the autopilot pass (a no-op at autonomy level
+    # 0, the default) and the dispute lifecycle records for the run's
+    # generated claims. Each is guarded separately: a failure in
+    # either must never fail the run's outputs, and every autopilot
+    # resolution is its own transaction inside autonomy.py.
+    try:
+        _run_row = repo.get_run(run_id)
+        _pol = Policy(**(_run_row.get("policy") or {})) if _run_row else Policy()
+        from autonomy import run_autopilot
+        run_autopilot(repo, run_id, _pol, "system:autopilot", _now_iso)
+    except Exception:
+        pass
+    try:
+        for m in repo.matches_for_run(run_id):
+            ded = (m["result"] or {}).get("deduction") or {}
+            if ded.get("autonomous_action") == "AUTO_GENERATE_DISPUTE_CLAIM":
+                repo.upsert_dispute(
+                    "DSP-" + m["match_id"].replace("m_", ""), m["match_id"],
+                    m["payment_id"],
+                    ded.get("payer") or ((m["result"] or {}).get("payment") or {}).get("payer_raw") or "",
+                    ded.get("claimed_cents") or 0,
+                    ded.get("expected_recovery_value_usd") or 0,
+                    ded.get("assigned_erp_reason_code") or "", _now_iso())
+    except Exception:
+        pass
 
 @app.post("/api/v1/cases/{cid}/load")
 def load_case(cid: str, ctx=Depends(auth_context)):
@@ -1561,6 +1587,202 @@ def collections(ctx=Depends(auth_context)):
         return []
     return prioritise_collections(_residual_invoices(repo), models()["delay_model"],
                                   current_month=_current_month())
+
+# ---- Autonomy, behaviour, collections actions, disputes, predictions ----
+
+@app.post("/api/v1/matches/{match_id}/reverse")
+def reverse_match(match_id: str, ctx=Depends(auth_context)):
+    """One-click reversal of an autopilot resolution, from the
+    pre-state snapshot the resolution recorded. Human decisions and
+    solver auto-posts are not reversible here - they stand as
+    posted, as an ERP's would."""
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    from autonomy import reverse_autopilot
+    try:
+        return reverse_autopilot(repo, match_id, f"api:{ctx['role']}", _now_iso)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+@app.get("/api/v1/behaviour-profiles")
+def behaviour_profiles(ctx=Depends(auth_context)):
+    """What this workspace's decided history says about each payer:
+    bundle habits, partial and deduction rates, duplicates. Triage
+    evidence and analytics - the solver reads none of it."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    from behaviour import build_profiles
+    return {"profiles": build_profiles(repo)}
+
+class CollectionActIn(BaseModel):
+    invoice_id: str; action: str; promised_date: str = ""; note: str = ""
+
+@app.post("/api/v1/collections/act")
+def collections_act(body: CollectionActIn, ctx=Depends(auth_context)):
+    """The collections agent acts on one queue row: 'remind' composes
+    the reminder from the ledger row and records it as an outbox
+    draft (the Mail Hub sends it once an address is supplied);
+    'promise' logs a promise to pay, whose kept/broken status is
+    derived from the ledger, never asserted by hand."""
+    need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
+    inv = next((i for i in repo.open_invoices() if i.invoice_id == body.invoice_id), None)
+    if inv is None:
+        raise HTTPException(404, f"invoice {body.invoice_id} is not open in this workspace")
+    if body.action == "remind":
+        d = reminder_draft(inv)
+        oid = repo.add_outbox(inv.customer, d["subject"], d["body"],
+                              "collection_reminder", inv.invoice_id, "draft",
+                              "Composed by the collections agent from the ledger "
+                              "row; add the customer's email address in the Mail "
+                              "Hub to send.", _now_iso())
+        repo.audit(f"api:{ctx['role']}", "collection_reminder_drafted", "invoice",
+                   inv.invoice_id, {"outbox_id": oid, "tone": d["tone"]}, _now_iso())
+        return {"action": "remind", "outbox_id": oid, "status": "draft",
+                "tone": d["tone"], "subject": d["subject"]}
+    if body.action == "promise":
+        from datetime import datetime as _dt
+        try:
+            _dt.strptime(body.promised_date, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            raise HTTPException(422, "promised_date must be YYYY-MM-DD")
+        pid = repo.add_promise(inv.invoice_id, inv.customer, inv.gross_cents,
+                               body.promised_date, body.note, _now_iso())
+        repo.audit(f"api:{ctx['role']}", "promise_logged", "invoice", inv.invoice_id,
+                   {"promise_id": pid, "promised_date": body.promised_date}, _now_iso())
+        return {"action": "promise", "promise_id": pid, "status": "OPEN",
+                "invoice_id": inv.invoice_id, "promised_date": body.promised_date}
+    raise HTTPException(422, "action must be 'remind' or 'promise'")
+
+@app.get("/api/v1/collections/promises")
+def collections_promises(ctx=Depends(auth_context)):
+    """Promises to pay with derived status: KEPT when the invoice has
+    settled, BROKEN when the promised date has passed with the
+    invoice still open, OPEN otherwise."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    settled = {i.invoice_id for i in repo.all_invoices()
+               if i.invoice_id not in {o.invoice_id for o in repo.open_invoices()}}
+    out = []
+    for p in repo.list_promises():
+        if p["invoice_id"] in settled:
+            status = "KEPT"
+        elif p["promised_date"] < today:
+            status = "BROKEN"
+        else:
+            status = "OPEN"
+        out.append({**p, "status": status})
+    return {"promises": out}
+
+@app.get("/api/v1/disputes")
+def disputes(ctx=Depends(auth_context)):
+    """The dispute lifecycle: every claim a run generated, with its
+    status and whether it is due for escalation (open 14+ days
+    without resolution)."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    out = []
+    for d in repo.list_disputes():
+        try:
+            created = datetime.fromisoformat(d["created_at"].replace("Z", "+00:00"))
+            age_days = (now - created).days
+        except Exception:
+            age_days = 0
+        due = d["status"] in ("OPEN", "SENT", "ACKNOWLEDGED") and age_days >= 14
+        out.append({**d, "age_days": age_days, "escalation_due": due})
+    return {"disputes": out}
+
+class DisputeTransitionIn(BaseModel):
+    status: str; note: str = ""
+
+@app.post("/api/v1/disputes/{dispute_id}/transition")
+def dispute_transition(dispute_id: str, body: DisputeTransitionIn,
+                       ctx=Depends(auth_context)):
+    """Move a dispute along its lifecycle. SENT also records the
+    claim letter as an outbox draft; WON and LOST are terminal -
+    the outcome is booked into the record and its history."""
+    need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
+    d = repo.get_dispute(dispute_id)
+    if not d:
+        raise HTTPException(404, "dispute not found")
+    target = (body.status or "").upper()
+    if target not in ("SENT", "ACKNOWLEDGED", "ESCALATED", "WON", "LOST"):
+        raise HTTPException(422, "status must be SENT, ACKNOWLEDGED, ESCALATED, WON or LOST")
+    if d["status"] in ("WON", "LOST"):
+        raise HTTPException(409, f"dispute is {d['status']} - the outcome is booked and final")
+    ts = _now_iso()
+    history = list(d.get("history") or [])
+    history.append({"status": target, "at": ts, "note": body.note or "",
+                    "by_role": ctx["role"]})
+    repo.update_dispute(dispute_id, target, history, ts)
+    repo.audit(f"api:{ctx['role']}", "dispute_" + target.lower(), "dispute",
+               dispute_id, {"claimed_cents": d["claimed_cents"]}, ts)
+    if target == "SENT":
+        subject = (f"Dispute claim {dispute_id} - deduction of "
+                   f"${d['claimed_cents'] / 100:,.2f} under reason {d['reason_code'] or 'review'}")
+        body_text = (f"Dear Accounts Payable team,\n\nWe are disputing a deduction of "
+                     f"${d['claimed_cents'] / 100:,.2f} taken against payment "
+                     f"{d['payment_id']} (reason code {d['reason_code'] or 'unclassified'}). "
+                     f"Our expected recovery on this claim is "
+                     f"${float(d['expected_recovery_usd'] or 0):,.2f}. The supporting "
+                     "proof of delivery and invoice copies are held in our dispute "
+                     "record and available on request.\n\nAccounts Receivable")
+        repo.add_outbox(d["payer"] or "Customer", subject, body_text,
+                        "dispute_claim", dispute_id, "draft",
+                        "Composed at the SENT transition; add the customer's "
+                        "email address in the Mail Hub to send.", ts)
+    return {"dispute_id": dispute_id, "status": target, "history": history}
+
+@app.get("/api/v1/predictions")
+def predictions(ctx=Depends(auth_context)):
+    """Pre-arrival view: what the residual ledger is expected to pay,
+    per invoice, from the same forecast computation the Forecast
+    view bands - expected date, probability inside 30 days, and a
+    next-14-days flag. Same state rule as the forecast."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    if not repo.get_meta("active_case"):
+        return {"state": "empty", "expected": []}
+    if not repo.list_runs(1):
+        return {"state": "loaded_not_run", "expected": []}
+    invs = _residual_invoices(repo)
+    if not invs:
+        return {"state": "ready", "expected": []}
+    from datetime import datetime, timedelta, timezone
+    out = forecast_cash_in(invs, models()["delay_model"], current_month=_current_month())
+    today = datetime.now(timezone.utc).date()
+    rows = []
+    for d in out.get("invoices") or []:
+        exp_date = today + timedelta(days=max(0, round(d["expected_in_days"])))
+        rows.append({**d, "expected_date": exp_date.isoformat(),
+                     "within_14d": d["expected_in_days"] <= 14})
+    rows.sort(key=lambda r: r["expected_in_days"])
+    return {"state": "ready", "expected": rows,
+            "expected_14d_cents": sum(r["gross_cents"] for r in rows if r["within_14d"])}
+
+@app.get("/api/v1/evaluations/trend")
+def evaluations_trend(ctx=Depends(auth_context)):
+    """Continuous evaluation: each day's evaluations computation is
+    snapshotted for this tenant, and the latest is compared with
+    the first snapshot in the window. A drop of 2+ accuracy points
+    flags drift - the same numbers the Evaluations view shows,
+    watched over time instead of admired once."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    payload = evaluations()
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    snaps = repo.list_eval_snapshots()
+    if not snaps or not str(snaps[-1]["ts"]).startswith(today):
+        repo.add_eval_snapshot(_now_iso(), payload["milp_accuracy"],
+                               payload["greedy_accuracy"], payload["milp_exact_rate"],
+                               len(payload["cases"]))
+        snaps = repo.list_eval_snapshots()
+    baseline = snaps[0]["milp_accuracy"] if snaps else payload["milp_accuracy"]
+    latest = snaps[-1]["milp_accuracy"] if snaps else payload["milp_accuracy"]
+    drift = round((latest - baseline) * 100, 2)
+    return {"snapshots": snaps, "baseline_accuracy": baseline,
+            "latest_accuracy": latest, "drift_points": drift,
+            "drift_flag": drift <= -2.0,
+            "basis": "One snapshot per day per tenant, taken from the live "
+                     "evaluations computation (labelled synthetic scenarios)."}
 
 # ---- Mail: send the product's drafts, with an honest outbox ----
 class MailSendIn(BaseModel):
