@@ -481,9 +481,9 @@ async function whyNotDirect(pid,invId,btn){
   try{ const o=await api("/api/v1/why-not",{method:"POST",body:JSON.stringify({payment:pay,invoice_id:invId})});
     if(o.reason==="already_matched"){ out.innerHTML=`<div class="detail"><b>${esc(invId)}</b> is part of the set the solver chose.</div>`; return }
     if(o.reason==="not_in_candidate_set"){ out.innerHTML=`<div class="detail"><b>${esc(invId)}</b> never entered this payment's candidate shortlist - the Linking Agent's rungs excluded it before the solver ran, so there was nothing to force. ${esc(o.explanation||"")}</div>`; return }
-    const solo=o.solo_residual_cents||0;
+    const solo=(o.forced_residual_cents!=null?o.forced_residual_cents:(o.solo_residual_cents||0));
     const pen=Math.abs(solo)*1000000;
-    out.innerHTML=`<div class="detail"><b>Why not ${esc(invId)}?</b><br>Forcing ${esc(invId)} (${money(o.invoice_gross_cents||0)}) into this payment leaves <b>${money(solo)}</b> of the wire unexplained. The solver charges <b>1,000,000 objective units per cent</b> of unexplained cash, so that single choice adds <b>${pen.toExponential(2)}</b> objective units - against a chosen set that leaves <b>${money(CUR_RESID)}</b> unexplained. No rearrangement containing ${esc(invId)} reaches the chosen set's cost, which is why the optimiser excludes it.<br><small>${esc(o.explanation||"")}</small></div>`;
+    out.innerHTML=`<div class="detail"><b>Why not ${esc(invId)}?</b><br>Forcing ${esc(invId)} (${money(o.invoice_gross_cents||0)}) into this payment and re-solving the remaining invoices leaves <b>${money(solo)}</b> of the wire unexplained. The solver charges <b>1,000,000 objective units per cent</b> of unexplained cash, so the forced set carries <b>${pen.toExponential(2)}</b> objective units of residual penalty - against a chosen set that leaves <b>${money(CUR_RESID)}</b> unexplained. That is the best any set containing ${esc(invId)} can do, which is why the optimiser excludes it.<br><small>${esc(o.explanation||"")}</small></div>`;
   }catch(e){ out.innerHTML=`<div class="detail">${esc(e.message)}</div>` } finally{ btn.disabled=false }
 }
 let ERP_RES={};

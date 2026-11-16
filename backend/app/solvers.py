@@ -2,6 +2,7 @@
 The MILP formulation is Harsha's original SlateMatch engine, productised:
 candidate restriction is applied by the caller; money stays integer cents."""
 import time
+from dataclasses import replace
 import numpy as np
 from scipy.optimize import milp, LinearConstraint, Bounds
 from domain import Invoice, Payment, Policy, MatchResult, MatchLine
@@ -204,23 +205,50 @@ def solve_greedy(payment: Payment, candidates: list, policy: Policy) -> MatchRes
 
 def why_not_invoice(payment: Payment, candidates: list, invoice_id: str, policy: Policy) -> dict:
     """Counterfactual: force the invoice in, re-solve, report the cost.
-    Returns the residual delta and whether a subsidiary mismatch blocks it."""
+    The forced set is computed genuinely: the invoice is committed
+    (both discount variants), the remaining amount is re-solved over
+    the other candidates with solve_milp itself, and the reported
+    residual is that re-solve's outcome - never an estimate. Returns
+    the residual delta against the chosen set."""
     target = next((i for i in candidates if i.invoice_id == invoice_id), None)
     if target is None:
         return {"invoice_id": invoice_id, "reason": "not_in_candidate_set"}
     base = solve_milp(payment, candidates, policy)
     if any(l.invoice_id == invoice_id for l in base.lines):
         return {"invoice_id": invoice_id, "reason": "already_matched", "residual_cents": base.residual_cents}
+    others = [i for i in candidates if i.invoice_id != invoice_id]
+    variants = [(False, target.gross_cents)]
+    if target.discount_rate > 0:
+        variants.append((True, target.gross_cents - round(target.gross_cents * target.discount_rate)))
+    best = None
+    for dt, net in variants:
+        reduced = replace(payment, amount_cents=payment.amount_cents - net)
+        r = solve_milp(reduced, others, policy)
+        line = MatchLine(target.invoice_id, target.gross_cents, target.gross_cents - net, net, dt)
+        key = (abs(r.residual_cents), -len(r.lines))
+        if best is None or key < best[0]:
+            best = (key, [line] + list(r.lines), r)
+    _, forced_lines, forced = best
+    forced_ids = [l.invoice_id for l in forced_lines]
     # residual if this invoice were applied on its own against the wire
+    # (kept for older UI consumers; the forced re-solve above is the
+    # number the current UI presents)
     solo_residual = payment.amount_cents - target.gross_cents + (payment.claimed_deduction_cents if base.deduction_applied else 0)
+    delta = forced.residual_cents - base.residual_cents
     return {
         "invoice_id": invoice_id,
         "reason": "excluded_by_optimisation",
         "invoice_gross_cents": target.gross_cents,
         "solo_residual_cents": solo_residual,
+        "base_residual_cents": base.residual_cents,
+        "forced_residual_cents": forced.residual_cents,
+        "forced_invoice_ids": forced_ids,
+        "forced_deduction_applied": forced.deduction_applied,
+        "residual_delta_cents": delta,
         "explanation": (
-            f"Including {invoice_id} ({target.gross_cents/100:.2f}) leaves a solo residual of "
-            f"{solo_residual/100:.2f} against this wire, and the solver found a combination "
-            f"with residual {base.residual_cents/100:.2f}; the optimiser prefers the lower-residual set."
+            f"Forcing {invoice_id} ({target.gross_cents/100:.2f}) in and re-solving the remaining "
+            f"invoices gives the set {', '.join(forced_ids)} with residual {forced.residual_cents/100:.2f}, "
+            f"against the chosen set's residual {base.residual_cents/100:.2f}; forcing it costs "
+            f"{delta/100:.2f} of extra unexplained cash, so the optimiser excludes it."
         ),
     }

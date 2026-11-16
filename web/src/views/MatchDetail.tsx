@@ -50,6 +50,8 @@ export default function MatchDetail({
         reason?: string;
         explanation?: string;
         solo_residual_cents?: number;
+        forced_residual_cents?: number;
+        forced_invoice_ids?: string[];
         invoice_gross_cents?: number;
       }>("/api/v1/why-not", {
         method: "POST",
@@ -67,11 +69,11 @@ export default function MatchDetail({
           small: o.explanation || "",
         });
       } else {
-        const solo = o.solo_residual_cents || 0;
+        const solo = o.forced_residual_cents ?? o.solo_residual_cents ?? 0;
         const pen = Math.abs(solo) * 1000000;
         setWhy({
           title: `Why not ${invId}?`,
-          body: `Forcing ${invId} (${money(o.invoice_gross_cents || 0)}) into this payment leaves ${money(solo)} of the wire unexplained. The solver charges 1,000,000 objective units per cent of unexplained cash, so that single choice adds ${pen.toExponential(2)} objective units - against a chosen set that leaves ${money(match.residual_cents)} unexplained. No rearrangement containing ${invId} reaches the chosen set's cost, which is why the optimiser excludes it.`,
+          body: `Forcing ${invId} (${money(o.invoice_gross_cents || 0)}) into this payment and re-solving the remaining invoices leaves ${money(solo)} of the wire unexplained. The solver charges 1,000,000 objective units per cent of unexplained cash, so the forced set carries ${pen.toExponential(2)} objective units of residual penalty - against a chosen set that leaves ${money(match.residual_cents)} unexplained. That is the best any set containing ${invId} can do, which is why the optimiser excludes it.`,
           small: o.explanation || "",
         });
       }

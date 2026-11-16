@@ -32,6 +32,22 @@ def test_why_not_counterfactual():
     w = why_not_invoice(pay, cands, "INV-3", Policy())
     assert w["reason"] == "excluded_by_optimisation" and "residual" in w["explanation"]
 
+def test_why_not_genuinely_resolves_with_invoice_forced():
+    # The base solve prefers INV-1+INV-2 (older) over INV-3+INV-4 at the
+    # same zero residual. Forcing INV-3 must RE-SOLVE the remainder and
+    # find INV-4, reaching residual 0 - the old solo arithmetic reported
+    # 5000 (wire minus INV-3 alone), which is exactly the shortcut this
+    # test exists to keep out.
+    cands = [inv("INV-1", 12000, age=40), inv("INV-2", 8000, age=5),
+             inv("INV-3", 15000, age=30), inv("INV-4", 5000, age=2)]
+    pay = Payment(payment_id="P4", payer_raw="Apex Manufacturing", amount_cents=20000)
+    w = why_not_invoice(pay, cands, "INV-3", Policy())
+    assert w["reason"] == "excluded_by_optimisation"
+    assert w["solo_residual_cents"] == 5000
+    assert w["forced_residual_cents"] == 0, w
+    assert set(w["forced_invoice_ids"]) == {"INV-3", "INV-4"}, w
+    assert w["residual_delta_cents"] == w["forced_residual_cents"] - w["base_residual_cents"]
+
 def test_solver_never_calls_a_near_miss_exact():
     # Regression: at seven-figure amounts, solver scaling tolerances once
     # accepted a pair summing 37 cents short as "exact" because the pair's

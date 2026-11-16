@@ -33,6 +33,11 @@ COPY backend/app ./backend/app
 COPY backend/tests ./backend/tests
 COPY frontend ./frontend
 COPY --from=web-builder /build/frontend/react ./frontend/react
+# Since the Stage 4 flip the React build IS the root app: make the built
+# entry authoritative so the served / can never drift from the bundle
+# (previously the committed root entry was kept in sync by hand in
+# every pack, and a stale copy would have served a stale shell).
+COPY --from=web-builder /build/frontend/react/index.html ./frontend/index.html
 COPY docs ./docs
 COPY --from=rust-builder /build/target/release/slatematch-kernel /app/bin/slatematch-kernel
 RUN mkdir -p /app/data && useradd -m slatematch && chown -R slatematch /app
