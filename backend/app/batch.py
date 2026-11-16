@@ -56,17 +56,54 @@ class _DupIndex:
         self._core.setdefault(core, []).append((pay.payment_id, has_refs))
         self.added += 1
 
-def resolve_candidates(payment, open_invoices, aliases):
+def _usd_value(ccy, fx_rates):
+    """USD value of one unit of `ccy` under the policy's rate table,
+    or None when no rate exists (USD is definitionally 1.0)."""
+    if ccy == "USD":
+        return 1.0
+    r = (fx_rates or {}).get(ccy)
+    return float(r) if r else None
+
+
+def _fx_copy(inv, payment_ccy, fx_rates):
+    """A converted copy of a foreign-currency invoice, denominated in
+    the payment's currency at the policy rate (Decimal half-up, like
+    every other money conversion in the product). The copy keeps the
+    invoice's identity and carries its book gross/currency for
+    settlement and the ERP document."""
+    from decimal import Decimal, ROUND_HALF_UP
+    usd_book = _usd_value(inv.currency, fx_rates)
+    usd_pay = _usd_value(payment_ccy, fx_rates)
+    converted = int((Decimal(inv.gross_cents) * Decimal(str(usd_book)) / Decimal(str(usd_pay)))
+                    .quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return replace(inv, gross_cents=converted, currency=payment_ccy,
+                   fx_book_gross_cents=inv.gross_cents, fx_book_currency=inv.currency)
+
+
+def resolve_candidates(payment, open_invoices, aliases, policy=None):
     # Currency is a hard accounting boundary, not a preference: a EUR
-    # wire can never clear a USD invoice, whatever the numbers say.
-    open_invoices = [i for i in open_invoices if i.currency == payment.currency]
+    # wire can never clear a USD invoice, whatever the numbers say -
+    # UNLESS the tenant's policy carries FX rates for both sides, in
+    # which case foreign invoices enter as converted copies at those
+    # rates (see _fx_copy) and the realised difference is accounted
+    # at posting time. With no rates (the default, every seed and
+    # scenario), this function behaves exactly as before.
+    same_ccy = [i for i in open_invoices if i.currency == payment.currency]
+    foreign = [i for i in open_invoices if i.currency != payment.currency]
     # Subsidiary is the same kind of hard boundary when the wire
     # states one: a payment booked to one legal entity must never
     # clear another entity's invoices (no silent cross-company-code
     # settlement). Payments that state no subsidiary - every seed,
     # scenario and legacy upload - resolve exactly as before.
     if getattr(payment, "subsidiary", None):
-        open_invoices = [i for i in open_invoices if i.subsidiary == payment.subsidiary]
+        same_ccy = [i for i in same_ccy if i.subsidiary == payment.subsidiary]
+        foreign = [i for i in foreign if i.subsidiary == payment.subsidiary]
+    open_invoices = list(same_ccy)
+    fx_rates = getattr(policy, "fx_rates", None) if policy else None
+    if fx_rates and _usd_value(payment.currency, fx_rates) is not None:
+        for inv in foreign:
+            if _usd_value(inv.currency, fx_rates) is not None:
+                open_invoices.append(_fx_copy(inv, payment.currency, fx_rates))
     payer = (aliases.get(payment.payer_raw.strip().lower()) or payment.payer_raw).strip().lower()
     by_ref = []
     for inv in open_invoices:
@@ -376,7 +413,7 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                        "fuzzy_payer": 3, "all_ledger": 4}
         _planned = []
         for _idx, _p in enumerate(payments):
-            _c0, _r0 = resolve_candidates(_p, open_invoices, aliases)
+            _c0, _r0 = resolve_candidates(_p, open_invoices, aliases, policy)
             _planned.append((_RUNG_ORDER.get(_r0, 5), _idx, _p))
         payments = [p for _o, _i, p in sorted(_planned, key=lambda t: (t[0], t[1]))]
         # Deduction history per payer, from this workspace's own judged
@@ -428,7 +465,7 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                 dup_index.add(pay)
                 total_open = len(open_invoices)
                 _tl = time.perf_counter()
-                cands, matched_by = resolve_candidates(pay, open_invoices, aliases)
+                cands, matched_by = resolve_candidates(pay, open_invoices, aliases, policy)
                 stage_ms["linking"] += (time.perf_counter() - _tl) * 1000
                 rungs[matched_by] = rungs.get(matched_by, 0) + 1
                 stats["candidates_total"] += len(cands)
@@ -580,6 +617,55 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                         "invoices": unearned, "total_cents": _utot,
                         "reading": "an early payment discount taken after its window closed is not earned - it is claimed back like any other short payment"}
                 reasoning = _reasoning(pay, cands, matched_by, res, ded, auto, maker_checker, total_open, policy, ambiguous, precomputed_sets)
+                # FX record: when the set was settled across a currency
+                # boundary at the policy's rates and balanced exactly,
+                # carry the book-currency view of the match (book lines,
+                # book cash, and the realised variance) so the ERP
+                # document can post in book currency with the FX
+                # gain/loss line. Mixed book currencies or a non-zero
+                # residual keep the standard payment-currency document.
+                _fx_rec = None
+                _cand_by_id = {c.invoice_id: c for c in cands}
+                _fx_lines = [l for l in res.lines
+                             if (_cand_by_id.get(l.invoice_id) is not None
+                                 and _cand_by_id[l.invoice_id].fx_book_gross_cents is not None)]
+                if _fx_lines and res.residual_cents == 0:
+                    _book_ccys = {_cand_by_id[l.invoice_id].fx_book_currency for l in _fx_lines}
+                    if len(_book_ccys) == 1:
+                        from decimal import Decimal as _Dec, ROUND_HALF_UP as _RHU
+                        _book_ccy = next(iter(_book_ccys))
+                        _usd_pay = _usd_value(pay.currency, policy.fx_rates)
+                        _usd_book = _usd_value(_book_ccy, policy.fx_rates)
+
+                        def _conv(cents, frm=_usd_pay, to=_usd_book):
+                            return int((_Dec(cents) * _Dec(str(frm)) / _Dec(str(to)))
+                                       .quantize(_Dec("1"), rounding=_RHU))
+
+                        _book_lines = []
+                        for l in res.lines:
+                            c = _cand_by_id[l.invoice_id]
+                            if c.fx_book_gross_cents is not None:
+                                bg = c.fx_book_gross_cents
+                                bd = round(bg * c.discount_rate) if l.discount_taken else 0
+                                _book_lines.append({"invoice_id": l.invoice_id, "gross_cents": bg,
+                                                    "discount_cents": bd, "net_cents": bg - bd,
+                                                    "discount_taken": l.discount_taken})
+                            else:
+                                _book_lines.append({"invoice_id": l.invoice_id,
+                                                    "gross_cents": _conv(l.gross_cents),
+                                                    "discount_cents": _conv(l.discount_cents),
+                                                    "net_cents": _conv(l.net_cents),
+                                                    "discount_taken": l.discount_taken})
+                        _book_pay = _conv(pay.amount_cents)
+                        _book_ded = _conv(pay.claimed_deduction_cents) if res.deduction_applied else 0
+                        _var = _book_pay - (sum(x["gross_cents"] for x in _book_lines)
+                                            - sum(x["discount_cents"] for x in _book_lines)
+                                            - _book_ded)
+                        _fx_rec = {"book_currency": _book_ccy, "payment_currency": pay.currency,
+                                   "book_payment_cents": _book_pay,
+                                   "book_deduction_cents": _book_ded,
+                                   "variance_cents": _var, "book_lines": _book_lines,
+                                   "rate_text": f"1 {pay.currency} = {_usd_pay / _usd_book:.4f} {_book_ccy} (policy rate)"}
                 repo.add_match(match_id, run_id, pay.payment_id,
                                "AUTO_POSTED" if auto else "PROPOSED", res.solver, res.residual_cents,
                                res.confidence, {"payment": asdict(pay),
@@ -587,6 +673,7 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                                                 "matched_by": res.matched_by, "latency_ms": res.latency_ms,
                                                 "decision_reason": decision_reason,
                                                 "status": status, "auto_posted": auto, "deduction": ded,
+                                                "fx": _fx_rec,
                                                 "reasoning": reasoning,
                                                 "derivation": _deriv})
                 if auto and res.lines:

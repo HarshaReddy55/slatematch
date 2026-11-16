@@ -12,6 +12,9 @@ import Mail from "./views/Mail";
 import Policy from "./views/Policy";
 import Eval from "./views/Eval";
 import Health from "./views/Health";
+import Methodology from "./views/Methodology";
+import Architecture from "./views/Architecture";
+import Product from "./views/Product";
 import { NAV_SPRING } from "./ui/motion";
 import Casebar from "./ui/Casebar";
 import CaseBrief from "./ui/CaseBrief";
@@ -72,14 +75,19 @@ export type ViewKey =
   | "mail"
   | "policy"
   | "eval"
-  | "health";
+  | "health"
+  | "method"
+  | "arch"
+  | "product";
 
 /* Stage 6: grp carries vanilla's navrow group labels (index.html
    nav: OPERATE / INSIGHT & GOVERNANCE / EVALS & ARCHITECTURE).
-   Vanilla's group 3 also holds Methodology, Architecture and
-   Product Thinking; those are not React views (Stage 4 scope -
-   they stay reachable in the vanilla app), recorded in
-   STAGE6.md's register. */
+   Enterprise build: Methodology, Architecture and Product Thinking
+   are React views now too (12-14 below), ported from vanilla -
+   Methodology reads the same /api/v1/methodology endpoint vanilla
+   renders from, Architecture the same /api/v1/diagnostics feed -
+   so the migration is complete and vanilla remains only as the
+   byte-identical reference at /vanilla/. */
 const VIEWS: { key: ViewKey; num: string; label: string; grp: string }[] = [
   { key: "dash", num: "01", label: "Dashboard", grp: "OPERATE" },
   { key: "cases", num: "02", label: "Use Cases", grp: "OPERATE" },
@@ -92,6 +100,9 @@ const VIEWS: { key: ViewKey; num: string; label: string; grp: string }[] = [
   { key: "policy", num: "09", label: "Policy Studio", grp: "INSIGHT & GOVERNANCE" },
   { key: "eval", num: "10", label: "Evaluations", grp: "EVALS & ARCHITECTURE" },
   { key: "health", num: "11", label: "Agent Health", grp: "EVALS & ARCHITECTURE" },
+  { key: "method", num: "12", label: "Methodology", grp: "EVALS & ARCHITECTURE" },
+  { key: "arch", num: "13", label: "Architecture", grp: "EVALS & ARCHITECTURE" },
+  { key: "product", num: "14", label: "Product Thinking", grp: "EVALS & ARCHITECTURE" },
 ];
 
 function fromHash(): ViewKey {
@@ -392,6 +403,9 @@ export default function App() {
             {view === "policy" && <Policy toast={toast} />}
             {view === "eval" && <Eval />}
             {view === "health" && <Health />}
+            {view === "method" && <Methodology />}
+            {view === "arch" && <Architecture />}
+            {view === "product" && <Product />}
 
             <p className="font-mono text-[11px] text-mut2 m-0">
               Every figure is computed live from this workspace's API responses.

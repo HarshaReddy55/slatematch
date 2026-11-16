@@ -14,6 +14,12 @@ class Invoice:
     age_days: int = 0
     due_in_days: int = 0            # negative = overdue
     predicted_delay_days: float = 0.0
+    # FX only: when resolve_candidates converts this invoice into a
+    # payment's currency, the copy carries its book (original) gross
+    # and currency here so settlement and the ERP document can still
+    # speak in book values. None on every ordinary invoice.
+    fx_book_gross_cents: Optional[int] = None
+    fx_book_currency: Optional[str] = None
 
 @dataclass
 class Payment:
@@ -48,10 +54,22 @@ class Policy:
     # remainder spread pro-rata; falls back to pro_rata when the
     # remittance prices no line).
     partial_allocation_mode: str = "pro_rata"
+    # FX conversion rates: {currency: USD value of one unit}, e.g.
+    # {"EUR": 1.087} means 1 EUR = 1.087 USD. USD is always 1.0 and
+    # needs no entry. Empty (the default) keeps currency a hard
+    # matching boundary, exactly as before; with rates present, a
+    # payment may settle invoices of ONE other currency at these
+    # rates and the difference posts as realised FX gain/loss.
+    fx_rates: Dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.partial_allocation_mode not in ("pro_rata", "fifo_oldest", "explicit_line"):
             raise ValueError("partial_allocation_mode must be pro_rata, fifo_oldest or explicit_line")
+        for ccy, rate in (self.fx_rates or {}).items():
+            if not (isinstance(ccy, str) and len(ccy) == 3 and ccy.isalpha() and ccy == ccy.upper()):
+                raise ValueError(f"fx_rates key {ccy!r} must be a 3-letter uppercase currency code")
+            if not (isinstance(rate, (int, float)) and float(rate) > 0):
+                raise ValueError(f"fx_rates[{ccy}] must be a positive number (USD value of one unit)")
         # A policy is accounting judgement expressed as data; nonsense
         # values (a negative hold limit, a confidence bar above 1) must
         # fail loudly at the boundary, never reach the solver.

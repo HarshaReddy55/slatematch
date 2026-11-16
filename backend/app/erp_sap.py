@@ -24,7 +24,16 @@ GL = {
     "suspense": ("119900", "Unapplied cash suspense"),
     "residual_ar": ("121600", "Residual receivable - part-paid invoices"),
     "on_account": ("121900", "Unapplied cash - customer on-account"),
+    "fx_gain": ("710100", "Realised FX gain"),
+    "fx_loss": ("710200", "Realised FX loss"),
 }
+
+# Accounts that belong to the customer sub-ledger. In a real
+# BAPI_ACC_DOCUMENT_POST these may never appear in ACCOUNTGL (SAP
+# rejects a reconciliation account there, error RW602); they post
+# through ACCOUNTRECEIVABLE with the account as the line's assigned
+# G/L (the special-G/L pattern).
+AR_FAMILY = {"ar_control", "disputed_ar", "residual_ar", "on_account"}
 
 COMPANY_CODE = "1000"  # illustrative template value
 
@@ -70,46 +79,126 @@ def build_posting_document(match_result, payment, document_number=None, customer
         residual = eq.get("residual_cents") or 0
 
     journal = [_line("cash", debit_cents=payment_cents)]
+    journal_keys = ["cash"]
     if discounts:
         journal.append(_line("discounts", debit_cents=discounts))
+        journal_keys.append("discounts")
     if deduction_applied:
         journal.append(_line("deductions", debit_cents=deduction_applied))
+        journal_keys.append("deductions")
+    fx = match_result.get("fx") or {}
+    fx_variance = fx.get("variance_cents") or 0
+    if fx_variance:
+        # Realised FX difference on a cross-currency settlement: a
+        # gain is a credit, a loss a debit (see the FX builder in
+        # api/erp flow; the journal stays balanced because the AR
+        # side of an FX document is carried at book value).
+        if fx_variance > 0:
+            journal.append(_line("fx_gain", credit_cents=fx_variance))
+            journal_keys.append("fx_gain")
+        else:
+            journal.append(_line("fx_loss", debit_cents=-fx_variance))
+            journal_keys.append("fx_loss")
     if residual < 0:
         # Underpaid: the unpaid remainder is a residual receivable, not
         # suspense - the customer still owes it and it stays visible.
         journal.append(_line("residual_ar", debit_cents=-residual))
+        journal_keys.append("residual_ar")
     journal.append(_line("ar_control", credit_cents=gross))
+    journal_keys.append("ar_control")
     if residual > 0:
         # Overpaid: the excess is the customer's on-account credit.
         journal.append(_line("on_account", credit_cents=residual))
+        journal_keys.append("on_account")
 
     debits = sum(l["debit_cents"] for l in journal)
     credits = sum(l["credit_cents"] for l in journal)
     currency = (payment or {}).get("currency") or "USD"
 
+    # ---- BAPI_ACC_DOCUMENT_POST payload, full table shape --------
+    # Every posting line gets an ITEMNO_ACC; CURRENCYAMOUNT mirrors
+    # every ACCOUNTGL and ACCOUNTRECEIVABLE line under the same
+    # number (CURR_TYPE "00", document currency), signed S/H.
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc)
+    yyyymmdd = today.strftime("%Y%m%d")
+    item_no = [0]
+
+    def _item():
+        item_no[0] += 10
+        return f"{item_no[0]:010d}"
+
+    def _customer_for(inv):
+        return ((customers or {}).get(inv.get("invoice_id"))
+                or inv.get("customer")
+                or (payment or {}).get("payer_raw")
+                or "UNKNOWN")
+
+    accountgl, receivable, amounts = [], [], []
+
+    def _amount(item, cents, indicator):
+        amounts.append({"ITEMNO_ACC": item, "CURR_TYPE": "00",
+                        "CURRENCY": currency,
+                        "AMT_DOCCUR": cents if indicator == "S" else -cents})
+
+    for key, l in zip(journal_keys, journal):
+        indicator = "S" if l["debit_cents"] else "H"
+        cents = l["debit_cents"] or l["credit_cents"]
+        if key in AR_FAMILY:
+            continue  # posted below through ACCOUNTRECEIVABLE
+        item = _item()
+        accountgl.append({"ITEMNO_ACC": item, "GL_ACCOUNT": l["gl_account"],
+                          "ITEM_TEXT": l["account"],
+                          "DEBIT_CREDIT_INDICATOR": indicator,
+                          "AMOUNT_CENTS": cents})
+        _amount(item, cents, indicator)
+    for inv in lines:
+        g = inv.get("gross_cents", 0)
+        indicator = "H" if g >= 0 else "S"  # a credit memo clears as a debit
+        item = _item()
+        receivable.append({"ITEMNO_ACC": item, "CUSTOMER": _customer_for(inv),
+                           "COMP_CODE": COMPANY_CODE,
+                           "GL_ACCOUNT": GL["ar_control"][0],
+                           "INVOICE_ID": inv.get("invoice_id"),
+                           "DEBIT_CREDIT_INDICATOR": indicator,
+                           "AMOUNT_CENTS": abs(g)})
+        _amount(item, abs(g), indicator)
+    for key, l in zip(journal_keys, journal):
+        if key not in ("residual_ar", "on_account"):
+            continue
+        indicator = "S" if l["debit_cents"] else "H"
+        cents = l["debit_cents"] or l["credit_cents"]
+        item = _item()
+        receivable.append({"ITEMNO_ACC": item,
+                           "CUSTOMER": _customer_for(lines[0] if lines else {}),
+                           "COMP_CODE": COMPANY_CODE,
+                           "GL_ACCOUNT": l["gl_account"],
+                           "ITEM_TEXT": l["account"],
+                           "DEBIT_CREDIT_INDICATOR": indicator,
+                           "AMOUNT_CENTS": cents})
+        _amount(item, cents, indicator)
+
     bapi = {
         "DOCUMENTHEADER": {
+            "USERNAME": "SLATEMATCH",
             "DOCUMENT_TYPE": "DZ",
             "COMPANY_CODE": COMPANY_CODE,
             "CURRENCY": currency,
             "DOCUMENT_NUMBER": document_number,
             "REFERENCE": (payment or {}).get("payment_id"),
             "HEADER_TEXT": "SlateMatch autonomous cash application",
+            "DOC_DATE": yyyymmdd,
+            "PSTNG_DATE": yyyymmdd,
+            "FISC_YEAR": today.strftime("%Y"),
+            "FIS_PERIOD": today.strftime("%m"),
         },
-        "ACCOUNTGL": [
-            {"GL_ACCOUNT": l["gl_account"], "ITEM_TEXT": l["account"],
-             "DEBIT_CREDIT_INDICATOR": "S" if l["debit_cents"] else "H",
-             "AMOUNT_CENTS": l["debit_cents"] or l["credit_cents"]}
-            for l in journal
-        ],
-        "ACCOUNTRECEIVABLE": [
-            {"CUSTOMER": (customers or {}).get(inv.get("invoice_id"))
-                         or inv.get("customer")
-                         or (payment or {}).get("payer_raw")
-                         or "UNKNOWN",
-             "INVOICE_ID": inv.get("invoice_id"),
-             "AMOUNT_CENTS": inv.get("gross_cents", 0)}
-            for inv in lines
+        "ACCOUNTGL": accountgl,
+        "ACCOUNTRECEIVABLE": receivable,
+        "CURRENCYAMOUNT": amounts,
+        "EXTENSION2": [
+            {"STRUCTURE": "SLATEMATCH_REF",
+             "VALUEPART1": (payment or {}).get("payment_id") or "",
+             "VALUEPART2": "generated_not_posted"},
         ],
     }
     return {
@@ -126,6 +215,40 @@ def build_posting_document(match_result, payment, document_number=None, customer
                  "has been posted anywhere; the chart of accounts is an "
                  "illustrative template in SAP style."),
     }
+
+
+def document_for_match(match_result, payment, document_number=None, customers=None):
+    """The posting document for a stored match. A cross-currency
+    (FX) match carries a book-currency view of itself in
+    match_result["fx"] (recorded by the batch when the set balanced
+    at the policy rate): its document is then built in BOOK currency
+    - cash at the transaction value, AR at book value, and the
+    difference on the realised FX gain/loss line - instead of the
+    payment-currency document an ordinary match gets."""
+    fx = (match_result or {}).get("fx")
+    if not fx:
+        return build_posting_document(match_result, payment, document_number, customers)
+    book_res = {
+        "lines": fx["book_lines"],
+        "residual_cents": 0,
+        "derivation": {"equation": {
+            "payment_cents": fx["book_payment_cents"],
+            "deduction_applied_cents": fx.get("book_deduction_cents") or 0,
+            "residual_cents": 0}},
+        "fx": {"variance_cents": fx.get("variance_cents") or 0},
+    }
+    book_payment = dict(payment or {})
+    book_payment["currency"] = fx["book_currency"]
+    doc = build_posting_document(book_res, book_payment, document_number, customers)
+    doc["fx"] = {"payment_currency": fx["payment_currency"],
+                 "book_currency": fx["book_currency"],
+                 "rate_text": fx.get("rate_text"),
+                 "variance_cents": fx.get("variance_cents") or 0}
+    doc["note"] += (" FX: the wire arrived in " + fx["payment_currency"] +
+                    "; this document posts in the book currency " +
+                    fx["book_currency"] + " at " + (fx.get("rate_text") or "the policy rate") +
+                    ", with the realised difference on GL 710100/710200.")
+    return doc
 
 
 def dispute_accrual_journal(deduction):

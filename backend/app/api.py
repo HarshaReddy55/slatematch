@@ -23,7 +23,7 @@ from seed import seed_invoices, seed_payments, GROUND_TRUTH
 import ml as mlmod
 from forecast import forecast_cash_in, prioritise_collections
 from mail import mail_config, mail_config_public, reminder_draft, reminder_tone, send_mail, settlement_draft
-from erp_sap import build_posting_document, dispute_accrual_journal, document_number_for
+from erp_sap import build_posting_document, document_for_match, dispute_accrual_journal, document_number_for
 import rust_bridge
 
 def _env(name, default=""):
@@ -713,6 +713,27 @@ def import_file(body: FileImportIn, request: Request, ctx=Depends(auth_context))
             r["route"] = "csv"; r["extracted_via"] = how
             return r
         raise HTTPException(422, "no invoice rows could be read from this file - invoices need CSV columns (invoice id, customer, amount, age). Extracted text begins: " + " ".join(text.split())[:240])
+    if kind == "payments":
+        # Bank lockbox / statement files (BAI2, MT940, camt.054) are
+        # sniffed before the CSV reader: their lines are not CSV and
+        # must never fall through to the single-wire Capture Agent.
+        from lockbox import sniff_lockbox_format, PARSERS
+        fmt = sniff_lockbox_format(text, body.filename)
+        if fmt:
+            pays = PARSERS[fmt](text)
+            if not pays:
+                raise HTTPException(422, f"this file looks like a {fmt} bank file but no credit entries could be read from it")
+            for p in pays: repo.add_payment(p, payment_fingerprint(p))
+            if not repo.get_meta("active_case"):
+                repo.set_meta("active_case", {"id": "upload", "name": "Uploaded files", "source": "upload",
+                                              "loaded_at": _now_iso(), "expect": {}, "expect_exceptions": {},
+                                              "story": _uploaded_story(repo, "A bank lockbox file was uploaded into an empty workspace")})
+            pol = _policy_for(repo, ctx["tenant_id"], None)
+            run = run_batch(repo, repo.all_payments(), pol,
+                            "lockbox-" + uuid.uuid4().hex[:10], actor=f"api:{ctx['role']}")
+            _finish_run_outputs(repo, run)
+            return {"route": "lockbox", "format": fmt, "extracted_via": how,
+                    "imported": len(pays), "run": run}
     if parse_payments_csv(text)["payments"]:
         r = import_payments({"csv_text": text}, ctx)
         r["route"] = "csv"; r["extracted_via"] = how
@@ -1214,7 +1235,7 @@ def erp_document(payment_id: str, ctx=Depends(auth_context)):
     doc_id = (res.get("approval") or {}).get("erp_document_id") or (
         document_number_for(m["match_id"]) if m["status"] in ("AUTO_POSTED", "APPROVED_POSTED") else None)
     customers = {i.invoice_id: i.customer for i in repo.all_invoices()}
-    doc = build_posting_document(res, res.get("payment") or {"payment_id": payment_id},
+    doc = document_for_match(res, res.get("payment") or {"payment_id": payment_id},
                                  document_number=doc_id, customers=customers)
     out = {"match_id": m["match_id"], "run_id": m["run_id"], "status": m["status"],
            "document": doc}
@@ -1243,7 +1264,7 @@ def erp_run_documents(ctx=Depends(auth_context)):
         res = m["result"] or {}
         if m["status"] in ("AUTO_POSTED", "APPROVED_POSTED") and res.get("lines"):
             doc_id = (res.get("approval") or {}).get("erp_document_id") or document_number_for(m["match_id"])
-            doc = build_posting_document(res, res.get("payment") or {"payment_id": m["payment_id"]},
+            doc = document_for_match(res, res.get("payment") or {"payment_id": m["payment_id"]},
                                          document_number=doc_id, customers=customers)
             docs.append({"payment_id": m["payment_id"], "status": m["status"],
                          "payer": (res.get("payment") or {}).get("payer_raw", ""),
@@ -1334,7 +1355,7 @@ def _build_bundle(ctx):
         for m in matches:
             res = m["result"]
             if res.get("lines"):
-                docs[m["payment_id"]] = build_posting_document(
+                docs[m["payment_id"]] = document_for_match(
                     res, res.get("payment") or {"payment_id": m["payment_id"]},
                     document_number=(res.get("approval") or {}).get("erp_document_id") or (
                         document_number_for(m["match_id"]) if m["status"] in ("AUTO_POSTED", "APPROVED_POSTED") else None),

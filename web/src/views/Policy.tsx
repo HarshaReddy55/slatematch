@@ -16,7 +16,7 @@ import { Rise } from "../ui/motion";
    stored value and the API body stay in cents, exact; the raw cent
    value is one hover away in the input's title. */
 
-type FieldType = "text" | "number" | "cents" | "select";
+type FieldType = "text" | "number" | "cents" | "select" | "fxrates";
 interface Field {
   key: string;
   label: string;
@@ -111,6 +111,13 @@ const GROUPS: { title: string; fields: Field[] }[] = [
         type: "cents",
       },
       {
+        key: "fx_rates",
+        label: "FX rates (USD value of 1 unit)",
+        why: "Conversion rates for cross-currency settlement, written as EUR=1.087, GBP=1.270. With a rate present for both sides, a wire in one currency can settle invoices in another at that rate, and the realised difference posts to the FX gain/loss accounts in the SAP document. Leave empty and currency stays a hard boundary: a EUR wire can never clear a USD invoice.",
+        formula: "converted gross = book gross x rate(book) / rate(payment), Decimal half-up",
+        type: "fxrates",
+      },
+      {
         key: "partial_allocation_mode",
         label: "Partial payment allocation",
         why: "When an underpayment is approved, how its cash is spread across the matched invoices. Pro-rata shares the shortfall across every line. Oldest first settles the oldest invoice in full and leaves the balance on the newest, the way most AR policies read. Remittance-specified uses the per-invoice amounts the remittance itself states, spreading anything left pro-rata (and falling back to pro-rata when the remittance prices no line). Credit memos always net at face value first.",
@@ -167,6 +174,11 @@ export default function Policy({
           const raw = p[f.key];
           if (raw == null) v[f.key] = "";
           else if (f.type === "cents") v[f.key] = centsToDisplay(Number(raw));
+          else if (f.type === "fxrates")
+            v[f.key] = Object.entries(raw as Record<string, number>)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, val]) => `${k}=${val}`)
+              .join(", ");
           else v[f.key] = String(raw);
         }
         setValues(v);
@@ -188,6 +200,21 @@ export default function Policy({
       const raw = (values[f.key] ?? "").trim();
       if (f.type === "text" || f.type === "select") {
         body[f.key] = raw;
+        continue;
+      }
+      if (f.type === "fxrates") {
+        const rates: Record<string, number> = {};
+        if (raw) {
+          for (const part of raw.split(",")) {
+            const m = part.trim().match(/^([A-Za-z]{3})\s*=\s*([0-9]*\.?[0-9]+)$/);
+            if (!m) {
+              setFieldError(`${f.label} needs entries like EUR=1.087, GBP=1.270.`);
+              return null;
+            }
+            rates[m[1].toUpperCase()] = parseFloat(m[2]);
+          }
+        }
+        body[f.key] = rates;
         continue;
       }
       const n = parseFloat(raw);
@@ -331,7 +358,7 @@ export default function Policy({
                         ) : (
                         <input
                           id={`pol-${f.key}`}
-                          type={f.type === "text" ? "text" : "number"}
+                          type={f.type === "text" || f.type === "fxrates" ? "text" : "number"}
                           step="any"
                           value={values[f.key]}
                           title={
