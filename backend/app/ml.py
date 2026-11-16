@@ -87,6 +87,14 @@ def predict_delay(model, customer, terms_days, amount_cents, month):
     x = np.array([onehot + [terms_days, np.log1p(amount_cents), month, 1.0 if month in (3, 6, 9, 12) else 0.0]])
     return float(model.predict(x)[0])
 
-def predict_validity(model, pod_clean, claim_ratio, amount_cents, terms_days):
-    x = np.array([[1 if pod_clean else 0, claim_ratio, np.log1p(amount_cents), terms_days]])
-    return float(model.predict_proba(x)[0][1])
+# predict_validity() was retired in the Phase 2 hardening pass: it was
+# dead code - nothing in the API, the engine or the UI ever called it
+# (deduction win probability is the transparent 0.94/0.35 heuristic in
+# anomaly.py, labelled as such everywhere it appears). The validity
+# MODEL itself stays: train_all still trains it and reports its AUC.
+# The delay model's customer one-hot features also stay as they are -
+# the trained model and its published metrics (MAE 2.948, AUC 0.846)
+# are a validated, quoted artifact; replacing the features means
+# retraining and re-validating, which is model v2 roadmap work, not a
+# hardening fix.
+

@@ -15,13 +15,21 @@ export function goView(key: string) {
 }
 
 /** One-shot intents across views, the React equivalent of vanilla's
-    go() + setTimeout calls (executeActiveCase, openChaseFor). */
+    go() + setTimeout calls (executeActiveCase, openChaseFor). Writing
+    an intent also dispatches a window event, so a view that is
+    ALREADY mounted can react the moment the intent is set - the
+    'storage' event never fires in the tab that made the change, and
+    polling sessionStorage on a timer (the old Ledger pattern) costs
+    a wake-up several times a second for an event that may never
+    come. */
+export const INTENT_EVENT = "slate:intent";
 export function setIntent(key: string, value: string) {
   try {
     sessionStorage.setItem(key, value);
   } catch {
     /* private mode: the intent is a nicety, never a blocker */
   }
+  window.dispatchEvent(new CustomEvent(INTENT_EVENT, { detail: { key } }));
 }
 export function takeIntent(key: string): string | null {
   try {

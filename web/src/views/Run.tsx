@@ -12,6 +12,7 @@ import {
   setIntent,
   takeIntent,
   toggleRunDiffPanel,
+  INTENT_EVENT,
   CHART_COLS,
   CHART_LABELS,
   type AgentRecord,
@@ -628,13 +629,15 @@ export default function Run() {
   // Shell intents can also arrive while this view is already active
   // (the casebar and the palette live in the shell; clicking them
   // does not remount the view or reload its data, so the effects
-  // above never re-fire). Poll for late intents and honour them the
-  // same way; takeIntent has already removed any the effects above
-  // consumed, so nothing fires twice.
+  // above never re-fire). setIntent dispatches INTENT_EVENT in this
+  // tab (and 'storage' covers a second tab), so honour late intents
+  // on the event instead of polling sessionStorage on a 600ms timer;
+  // takeIntent has already removed any the effects above consumed,
+  // so nothing fires twice.
   const dataRef = useRef(data);
   dataRef.current = data;
   useEffect(() => {
-    const t = setInterval(() => {
+    const honour = () => {
       const d = dataRef.current;
       if (!d) return;
       if (sessionStorage.getItem("slate-jump-approvals")) {
@@ -663,8 +666,16 @@ export default function Run() {
         takeIntent("slate-run-live");
         runLive();
       }
-    }, 600);
-    return () => clearInterval(t);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith("slate-")) honour();
+    };
+    window.addEventListener(INTENT_EVENT, honour);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(INTENT_EVENT, honour);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [load, runLive]);
 
   useEffect(() => {

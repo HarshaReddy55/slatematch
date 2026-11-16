@@ -13,6 +13,7 @@ import {
 import {
   flashTarget,
   goView,
+  INTENT_EVENT,
   setIntent,
   takeIntent,
 } from "../lib/operate";
@@ -164,13 +165,14 @@ export default function Ledger({
   }, [data]);
 
   // Same-view case: the casebar cell clicked while the Ledger is
-  // already active sets the intent without a remount or reload, so
-  // poll for it and flash the panel the same way.
+  // already active sets the intent without a remount or reload.
+  // setIntent dispatches INTENT_EVENT in this tab (and 'storage'
+  // covers a second tab), so react to the event instead of polling
+  // sessionStorage on a 600ms timer.
   useEffect(() => {
-    const t = setInterval(() => {
-      const target = sessionStorage.getItem("slate-ledger-target");
+    const onIntent = () => {
+      const target = takeIntent("slate-ledger-target");
       if (!target) return;
-      takeIntent("slate-ledger-target");
       setTimeout(() => {
         flashTarget(
           document.getElementById(
@@ -178,8 +180,19 @@ export default function Ledger({
           )
         );
       }, 350);
-    }, 600);
-    return () => clearInterval(t);
+    };
+    const onNamed = (e: Event) => {
+      if ((e as CustomEvent).detail?.key === "slate-ledger-target") onIntent();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "slate-ledger-target") onIntent();
+    };
+    window.addEventListener(INTENT_EVENT, onNamed);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(INTENT_EVENT, onNamed);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   /* cellEdit()'s save contract: on success the edit counts towards

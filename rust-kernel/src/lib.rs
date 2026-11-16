@@ -1,5 +1,5 @@
 //! SlateMatch matching kernel - pure functions, no mutation of inputs.
-//! Semantics mirror the Python DP reference (rust_bridge.py):
+//! Semantics mirror the Python enumeration reference (rust_bridge.py):
 //! choose the subset of invoices whose gross sums closest to (never above)
 //! target + deduction, maximising the age-weighted score
 //! sum(1 + age_days * age_weight) among equally-close subsets.
@@ -19,48 +19,58 @@ pub struct KernelResult {
     pub score_milli: i64, // score * 1000, integer for exact cross-language comparison
 }
 
-/// DP over cents. State per reachable sum: best (score_milli, chosen bitset as Vec<bool>).
-/// Pure: inputs are borrowed, output is freshly allocated.
+/// Subset enumeration over the candidates. The old DP over cents
+/// allocated one state per cent of the target - at the engine's
+/// $250,000 gate that is 25,000,000 states, each carrying a selection
+/// vector - to choose among at most 18 invoices. Enumeration is 2^n
+/// in the candidate count and independent of the amount: each subset's
+/// sum and score are accumulated from its lowest set bit. Selection
+/// rule, shared verbatim with the Python reference: maximise (sum,
+/// then score); break exact ties by fewer invoices, then by the
+/// lexicographically smaller selected-id list. Bounded to 20
+/// candidates (the engine gates at 18); beyond the bound the kernel
+/// declines with an empty selection rather than allocating 2^n states.
 pub fn best_subset(target_cents: i64, invoices: &[KernelInvoice], age_weight_milli: i64) -> KernelResult {
-    let cap = target_cents.max(0) as usize;
-    // dp[sum] = Option<(score_milli, selection)>
-    let mut dp: Vec<Option<(i64, Vec<bool>)>> = vec![None; cap + 1];
-    dp[0] = Some((0, vec![false; invoices.len()]));
-    for (i, inv) in invoices.iter().enumerate() {
-        let g = inv.gross_cents;
-        if g <= 0 || g as usize > cap { continue; }
-        let g = g as usize;
-        let w = 1000 + inv.age_days * age_weight_milli;
-        // iterate sums descending so each invoice is used at most once
-        for s in (0..=cap - g).rev() {
-            if let Some((score, sel)) = dp[s].clone() {
-                let ns = s + g;
-                let nscore = score + w;
-                let better = match &dp[ns] {
-                    None => true,
-                    Some((es, _)) => nscore > *es,
-                };
-                if better {
-                    let mut nsel = sel.clone();
-                    nsel[i] = true;
-                    dp[ns] = Some((nscore, nsel));
-                }
-            }
-        }
+    let cap = target_cents.max(0);
+    let items: Vec<&KernelInvoice> = invoices.iter()
+        .filter(|inv| inv.gross_cents > 0 && inv.gross_cents <= cap)
+        .collect();
+    let n = items.len();
+    if n > 20 {
+        return KernelResult { selected_ids: vec![], selected_sum_cents: 0,
+                              residual_cents: target_cents, score_milli: 0 };
     }
-    // best = highest reachable sum; tie-break by score (DP already maximises score per sum)
-    let mut best_sum = 0usize;
-    for s in (0..=cap).rev() {
-        if dp[s].is_some() { best_sum = s; break; }
+    let size = 1usize << n;
+    let mut sums = vec![0i64; size];
+    let mut scores = vec![0i64; size];
+    let mut counts = vec![0u32; size];
+    for mask in 1..size {
+        let bit = mask.trailing_zeros() as usize;
+        let prev = mask ^ (1usize << bit);
+        sums[mask] = sums[prev] + items[bit].gross_cents;
+        scores[mask] = scores[prev] + 1000 + items[bit].age_days * age_weight_milli;
+        counts[mask] = counts[prev] + 1;
     }
-    let (score, sel) = dp[best_sum].clone().unwrap_or((0, vec![false; invoices.len()]));
-    let selected_ids: Vec<String> = invoices.iter().zip(sel.iter())
-        .filter(|(_, &b)| b).map(|(inv, _)| inv.invoice_id.clone()).collect();
+    fn ids_of(items: &[&KernelInvoice], mask: usize) -> Vec<String> {
+        items.iter().enumerate()
+            .filter(|(b, _)| mask >> b & 1 == 1)
+            .map(|(_, inv)| inv.invoice_id.clone()).collect()
+    }
+    let mut best = 0usize;
+    for mask in 1..size {
+        if sums[mask] > cap { continue; }
+        let better = (sums[mask], scores[mask]) > (sums[best], scores[best])
+            || ((sums[mask], scores[mask]) == (sums[best], scores[best])
+                && (counts[mask] < counts[best]
+                    || (counts[mask] == counts[best]
+                        && ids_of(&items, mask) < ids_of(&items, best))));
+        if better { best = mask; }
+    }
     KernelResult {
-        selected_ids,
-        selected_sum_cents: best_sum as i64,
-        residual_cents: target_cents - best_sum as i64,
-        score_milli: score,
+        selected_ids: ids_of(&items, best),
+        selected_sum_cents: sums[best],
+        residual_cents: target_cents - sums[best],
+        score_milli: scores[best],
     }
 }
 

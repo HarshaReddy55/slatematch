@@ -14,6 +14,7 @@ HEADER_SYNONYMS = {
     "age_days": ["age_days", "age", "days_outstanding", "aging"],
     "due_in_days": ["due_in_days", "days_to_due"],
     "predicted_delay_days": ["predicted_delay_days", "pred_delay", "expected_delay"],
+    "currency": ["currency", "ccy", "curr", "invoice_currency"],
 }
 
 def _norm(h): return re.sub(r"[^a-z0-9]", "_", h.strip().lower()).strip("_")
@@ -34,7 +35,11 @@ def _money_to_cents(v):
     """Parse a money cell in either convention: 1,234.56 (US) or
     1.234,56 (European) or 1234,56 (decimal comma). The last separator
     present is the decimal one; a lone comma followed by three digits
-    is a thousands separator."""
+    is a thousands separator. The value is parsed with Decimal and
+    rounded half-up to the cent - binary float parsing (the old path)
+    mis-rounds exactly at the half-cent boundary (2.675 stored as
+    2.67499... came out a cent short) and loses cents outright on
+    amounts large enough to exhaust float precision."""
     if v is None or str(v).strip() == "": return 0
     s = str(v).replace("$", "").strip()
     if "," in s and "." in s:
@@ -44,7 +49,22 @@ def _money_to_cents(v):
         parts = s.split(",")
         if len(parts) == 2 and len(parts[1]) == 2: s = s.replace(",", ".")
         else: s = s.replace(",", "")
-    return int(round(float(s) * 100))
+    from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
+    try:
+        d = Decimal(s)
+    except InvalidOperation:
+        raise ValueError(f"unparseable amount {v!r}")
+    return int((d * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+def _currency(v):
+    """A currency cell: blank means the workspace default (USD); a
+    present value must be a 3-letter code - anything else is a data
+    error on the row, not a silent USD. Currency is a hard candidate
+    filter in the engine, so a misread code would strand real money."""
+    s = str(v or "").strip().upper()
+    if not s: return "USD"
+    if not re.match(r"^[A-Z]{3}$", s): raise ValueError(f"unrecognised currency {v!r}")
+    return s
 
 def _rate(v):
     """The discount column is a PERCENT column: 2 means 2%, 0.5 means
@@ -76,6 +96,7 @@ def parse_invoices_csv(text):
                 invoice_id=inv_id, customer=str(g("customer", "UNKNOWN")).strip() or "UNKNOWN",
                 subsidiary=str(g("subsidiary", "MAIN")).strip() or "MAIN",
                 gross_cents=_money_to_cents(g("gross_cents")),
+                currency=_currency(g("currency")),
                 po_number=(str(g("po_number")).strip() or None),
                 discount_rate=_rate(g("discount_rate")),
                 age_days=int(float(g("age_days", 0) or 0)), due_in_days=int(float(g("due_in_days", 0) or 0)),
@@ -92,6 +113,7 @@ PAYMENT_HEADER_SYNONYMS = {
     "deduction_reason_raw": ["deduction_reason", "reason", "deduction_note"],
     "pod_verified_clean": ["pod_verified_clean", "pod_clean", "pod_verified", "proof_of_delivery_clean"],
     "remittance_text": ["remittance", "remittance_text", "notes", "reference_text", "memo"],
+    "currency": ["currency", "ccy", "curr", "payment_currency"],
 }
 
 _REF_RE = re.compile(r"\b(?:([A-Za-z]{1,4})-)?(INV|PO|SI|BILL|DOC)[-\s]?(\d+)\b", re.IGNORECASE)
@@ -139,6 +161,7 @@ def parse_payments_csv(text):
                 payment_id=pid,
                 payer_raw=str(g("payer_raw", "UNKNOWN")).strip() or "UNKNOWN",
                 amount_cents=_money_to_cents(g("amount_cents")),
+                currency=_currency(g("currency")),
                 claimed_deduction_cents=_money_to_cents(g("claimed_deduction_cents")),
                 deduction_reason_raw=str(g("deduction_reason_raw", "")).strip(),
                 pod_verified_clean=_truthy(g("pod_verified_clean")),

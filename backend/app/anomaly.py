@@ -53,5 +53,38 @@ def deduction_intelligence(payment, hist_mean_cents, hist_std_cents, policy: Pol
             "win_probability_basis": "transparent heuristic: 0.94 if POD verified clean else 0.35 (demo rule, not a trained model)"}
 
 def payment_fingerprint(payment):
-    import hashlib
-    return hashlib.sha256(f"{payment.payer_raw}|{payment.amount_cents}|{payment.currency}".encode()).hexdigest()[:16]
+    """Duplicate identity of a wire. v1 hashed only payer|amount|currency,
+    which false-positives two genuinely different wires from the same
+    payer for the same amount (a monthly rent-style payment would block
+    its own successor). v2 also binds the claimed deduction and the
+    sorted remittance references, and normalises the payer name, so the
+    fingerprint identifies THE wire, not the amount: a true resend
+    (same references, same claim) still collides; a distinct wire that
+    merely shares an amount does not. The full hex digest is kept -
+    the v1 16-char truncation was a 64-bit collision budget. Payments
+    carry no value-date field in the canonical schema, so none is
+    hashed; references are the strongest wire identity the schema has.
+    Callers recompute fingerprints from stored rows rather than
+    trusting the stored column, so the v1->v2 change strands nothing."""
+    import hashlib, re
+    payer = re.sub(r"\s+", " ", (payment.payer_raw or "").strip().lower())
+    refs = ",".join(sorted({str(r).strip().upper() for r in (getattr(payment, "references", None) or []) if str(r).strip()}))
+    raw = "|".join([payer, str(int(payment.amount_cents)), (payment.currency or "").strip().upper(),
+                    str(int(payment.claimed_deduction_cents or 0)), refs])
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def payment_core_fingerprint(payment):
+    """The v1-strength identity: normalised payer|amount|currency|claim,
+    WITHOUT the remittance references. The batch duplicate guard tiers
+    the two: a strong-fingerprint collision is the same wire; a core
+    collision is the same wire only when at least one side carries no
+    references (a resend that lost its remittance is exactly the
+    dangerous duplicate). When both sides name DIFFERENT references,
+    they are demonstrably different wires that merely share an amount,
+    and neither may block the other."""
+    import hashlib, re
+    payer = re.sub(r"\s+", " ", (payment.payer_raw or "").strip().lower())
+    raw = "|".join([payer, str(int(payment.amount_cents)), (payment.currency or "").strip().upper(),
+                    str(int(payment.claimed_deduction_cents or 0))])
+    return hashlib.sha256(raw.encode()).hexdigest()

@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS workspace_meta(
 CREATE TABLE IF NOT EXISTS outbox(
   id INTEGER PRIMARY KEY AUTOINCREMENT, to_addr TEXT, subject TEXT, body TEXT,
   kind TEXT, ref_id TEXT, status TEXT, detail TEXT, created_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
+CREATE INDEX IF NOT EXISTS idx_matches_payment ON matches(payment_id);
+CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
+CREATE INDEX IF NOT EXISTS idx_exceptions_run ON exceptions(run_id);
+CREATE INDEX IF NOT EXISTS idx_exceptions_payment ON exceptions(payment_id);
+CREATE INDEX IF NOT EXISTS idx_steps_run ON run_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity, entity_id);
+CREATE INDEX IF NOT EXISTS idx_payments_fingerprint ON payments(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status);
 """
 
 class Repository:
@@ -80,10 +90,56 @@ class Repository:
             self._local.conn = c
         return c
 
+    # -- unit of work ---------------------------------------------------
+    # Writes normally commit one statement at a time (the _x default).
+    # A caller that must land several writes atomically - an approval
+    # decision (match status + settlements + alias + audit + outbox) or
+    # a whole batch run (matches + exceptions + steps + run record) -
+    # brackets them with begin()/commit(), or the transaction() context
+    # manager. Depth is tracked per thread because connections are per
+    # thread: nested begins join the outer transaction, only the
+    # outermost commit lands, and any rollback discards everything.
+    # While a transaction is open, other connections keep reading the
+    # last committed state (WAL), so a half-written decision or run is
+    # never visible; the writing thread reads its own writes.
+    def begin(self):
+        self._local.txn_depth = getattr(self._local, "txn_depth", 0) + 1
+
+    def commit(self):
+        depth = getattr(self._local, "txn_depth", 0)
+        if depth <= 1:
+            self._local.txn_depth = 0
+            with self._lock:
+                self.conn.commit()
+        else:
+            self._local.txn_depth = depth - 1
+
+    def rollback(self):
+        self._local.txn_depth = 0
+        with self._lock:
+            self.conn.rollback()
+
+    def transaction(self):
+        from contextlib import contextmanager
+        repo = self
+
+        @contextmanager
+        def _txn():
+            repo.begin()
+            try:
+                yield repo
+            except Exception:
+                repo.rollback()
+                raise
+            repo.commit()
+
+        return _txn()
+
     def _x(self, sql, params=()):
         with self._lock:
             cur = self.conn.execute(sql, params)
-            self.conn.commit()
+            if getattr(self._local, "txn_depth", 0) == 0:
+                self.conn.commit()
             return cur
 
     def add_invoice(self, inv):
@@ -122,11 +178,33 @@ class Repository:
         done |= {r[0] for r in self.conn.execute("SELECT payment_id FROM exceptions").fetchall()}
         return [p for p in self.all_payments() if p.payment_id not in done]
 
+    def reconciled_fingerprints(self):
+        """Duplicate-guard lookback: for every payment a run has already
+        reconciled (it carries a match or an exception record), its
+        payment_id, strong and core fingerprints and whether it carried
+        remittance references. The batch engine seeds its duplicate
+        index with these so a wire already reconciled under a DIFFERENT
+        payment id - a re-imported CSV, a bank resend with a fresh
+        reference - is still held as a duplicate instead of being
+        solved a second time. Fingerprints are recomputed from the
+        stored rows, never read from the stored column, so a
+        fingerprint-format upgrade cannot strand a workspace whose
+        rows were written by an older build."""
+        from anomaly import payment_fingerprint, payment_core_fingerprint
+        done = {r[0] for r in self.conn.execute("SELECT payment_id FROM matches").fetchall()}
+        done |= {r[0] for r in self.conn.execute("SELECT payment_id FROM exceptions").fetchall()}
+        return [{"payment_id": p.payment_id,
+                 "strong": payment_fingerprint(p),
+                 "core": payment_core_fingerprint(p),
+                 "has_refs": bool(getattr(p, "references", None))}
+                for p in self.all_payments() if p.payment_id in done]
+
     def clear_workspace(self):
         with self._lock:
             for t in ("invoices", "payments", "runs", "run_steps", "matches", "exceptions", "workspace_meta"):
                 self.conn.execute(f"DELETE FROM {t}")
-            self.conn.commit()
+            if getattr(self._local, "txn_depth", 0) == 0:
+                self.conn.commit()
 
     def set_meta(self, key, value):
         self._x("INSERT OR REPLACE INTO workspace_meta VALUES (?,?)", (key, json.dumps(value)))
