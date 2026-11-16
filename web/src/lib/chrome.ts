@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { api, authHeaders, type MatchRecord } from "./api";
 import type { WorkspaceOperate } from "./operate";
 
@@ -67,9 +67,21 @@ export function requestShellRefresh(force = false) {
     reads workspace or run state subscribes its loader here; the
     shell dispatchers (casebar switch / reset / save, palette,
     session restore) already fire the event. */
-export function useWsRefresh(load: () => void) {
+export function useWsRefresh(load: () => void, onForce?: () => void) {
+  const forceRef = useRef(onForce);
+  forceRef.current = onForce;
   useEffect(() => {
-    const on = () => load();
+    const on = (e: Event) => {
+      /* A forced refresh means the workspace was authoritatively
+         REPLACED (case switch, restore, reseed): the old figures
+         must leave the screen synchronously, as vanilla's loadCase
+         blanks run surfaces, instead of flashing stale numbers
+         until the reload lands (owner + live-pass defect, 16 Nov
+         2026). Ordinary refreshes keep stale-while-revalidate. */
+      if ((e as CustomEvent).detail?.force && forceRef.current)
+        forceRef.current();
+      load();
+    };
     window.addEventListener("slate:ws-refresh", on);
     return () => window.removeEventListener("slate:ws-refresh", on);
   }, [load]);

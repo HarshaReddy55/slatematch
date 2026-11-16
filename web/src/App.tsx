@@ -110,6 +110,13 @@ const shellBtnSquare =
 
 export default function App() {
   const [view, setView] = useState<ViewKey>(fromHash);
+
+  /* Every section opens at its top (owner, 16 Nov 2026): without
+     this the window kept the previous section's scroll offset and
+     long pages landed the reader at the bottom of the new one. */
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view]);
   const [diffOpen, setDiffOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -247,8 +254,11 @@ export default function App() {
     <main className="min-h-screen text-ink font-sans">
       <div className="flex flex-col lg:flex-row lg:items-start">
         <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-line lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
-          <div className="flex items-start justify-between gap-3 px-4 pt-5 pb-4 shrink-0">
-            <div>
+          <div className="relative flex items-start justify-between gap-3 px-4 pt-5 pb-4 shrink-0">
+            {/* Logo: exactly as deployed in consolidated v2.
+                Owner, 16 Nov 2026: leave the logo as it is -
+                do not reopen. */}
+            <div className="relative">
               <div className="flex items-center gap-3.5">
                 <img
                   src={logoGlass}

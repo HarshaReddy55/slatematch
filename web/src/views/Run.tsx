@@ -236,8 +236,13 @@ export default function Run() {
   const runningRef = useRef(false);
   runningRef.current = running;
   useEffect(() => {
-    const on = () => {
-      if (!runningRef.current) load();
+    const on = (e: Event) => {
+      if (runningRef.current) return;
+      /* Forced replacement (case switch / restore / reseed):
+         drop the old run's figures synchronously, like every
+         other view's onForce reset. */
+      if ((e as CustomEvent).detail?.force) setData(null);
+      load();
     };
     window.addEventListener("slate:ws-refresh", on);
     return () => window.removeEventListener("slate:ws-refresh", on);
@@ -463,13 +468,34 @@ export default function Run() {
             ]);
           } else if (e.type === "batch_done") {
             liveEvent("batch_done");
-            setLiveSummary(
-              `Run ${e.run_id} complete: ${e.auto_posted} of ${e.payments} auto-posted, touchless ${Math.round((100 * e.auto_posted) / Math.max(e.payments, 1))}% - total engine time ${e.ms} ms. Stored - see it in Dashboard run history.`
-            );
-            pushLog([
-              { t: "DONE", c: "text-ok font-semibold" },
-              { t: ` ${e.run_id} in ${e.ms} ms` },
-            ]);
+            if (e.replay) {
+              /* The replay event is synthesised by the stream
+                 endpoint when every staged payment is already
+                 reconciled: the engine re-ran on a scratch copy
+                 for show, the stored run did not move, and the
+                 event carries no engine time. Say exactly that -
+                 never "undefined ms", never "Stored". */
+              setLiveSummary(
+                `Already reconciled - the stream replayed the run on a scratch copy for show. The stored run and this workspace are unchanged.`
+              );
+              pushLog([
+                { t: "DONE", c: "text-ok font-semibold" },
+                { t: ` replay of ${e.run_id} - stored run unchanged` },
+              ]);
+            } else {
+              setLiveSummary(
+                `Run ${e.run_id} complete: ${e.auto_posted} of ${e.payments} auto-posted, touchless ${Math.round((100 * e.auto_posted) / Math.max(e.payments, 1))}%${typeof e.ms === "number" ? ` - total engine time ${e.ms} ms` : ""}. Stored - see it in Dashboard run history.`
+              );
+              pushLog([
+                { t: "DONE", c: "text-ok font-semibold" },
+                {
+                  t:
+                    typeof e.ms === "number"
+                      ? ` ${e.run_id} in ${e.ms} ms`
+                      : ` ${e.run_id} complete`,
+                },
+              ]);
+            }
           } else if (e.type === "error") {
             pushLog([
               { t: "ERROR", c: "text-bad font-semibold" },
@@ -483,14 +509,18 @@ export default function Run() {
         `Live stream failed: ${err instanceof Error ? err.message : String(err)}. The stored-run path still works - use Run without streaming.`
       );
     }
-    setLiveStages(null);
-    setRunning(false);
     runBusy.current = false;
     // A fresh run becomes the viewed run (vanilla lands on it too).
     viewRidRef.current = null;
     setViewRid(null);
     setExcFilter(false);
+    /* Seamless landing (owner, 16 Nov 2026): the completed agent
+       strip stays on screen while the stored run loads, and only
+       then swaps out - clearing it first blanked the page at the
+       exact moment the run finished. */
     await load();
+    setLiveStages(null);
+    setRunning(false);
     /* Vanilla: a landed run invalidates the brief and refreshes
        every workspace surface (assist.js, on stream end). */
     requestShellRefresh();
@@ -551,13 +581,15 @@ export default function Run() {
       );
     } finally {
       timers.forEach(clearTimeout);
-      setLiveStages(null);
-      setRunning(false);
       runBusy.current = false;
       viewRidRef.current = null;
       setViewRid(null);
       setExcFilter(false);
+      /* Same seamless landing as the streamed path: hold the
+         strip until the stored run is on screen. */
       await load();
+      setLiveStages(null);
+      setRunning(false);
       /* Vanilla: a finished batch run invalidates the brief and
          refreshes every workspace surface (operate.js). */
       requestShellRefresh();
@@ -824,6 +856,7 @@ export default function Run() {
         pid: m.payment_id,
         outcome: outcome as "POSTED" | "HELD" | "NOT POSTED",
         invoices: lines.map((l) => l.invoice_id).join(", ") || "-",
+        invoiceIds: lines.map((l) => l.invoice_id),
         alloc,
         unapplied: m.residual_cents || 0,
         reason: bits.join(" - ") || m.status,
@@ -837,6 +870,7 @@ export default function Run() {
         pid: e.payment_id,
         outcome: "NOT POSTED" as const,
         invoices: "-",
+        invoiceIds: [] as string[],
         alloc: 0,
         unapplied: e.detail?.amount_cents || 0,
         reason: `${e.kind} (${e.severity}): ${e.recommended_action}`,
@@ -844,6 +878,11 @@ export default function Run() {
     }
     return rows;
   })();
+
+  const auditCounts = { POSTED: 0, HELD: 0, "NOT POSTED": 0 };
+  auditRows.forEach((r) => {
+    auditCounts[r.outcome]++;
+  });
 
   const copyAudit = async () => {
     const counts = { POSTED: 0, HELD: 0, "NOT POSTED": 0 };
@@ -1593,7 +1632,14 @@ export default function Run() {
                     </p>
                   )}
                 </Panel>
-                {auditRows.length > 0 && (
+              </div>
+              {/* The audit panel sits OUTSIDE the two-column grid
+                  above (owner, 16 Nov 2026): as a third grid child
+                  it was squeezed into half width and its reason
+                  column clipped mid-word. An audit table gets the
+                  full content width. */}
+              {auditRows.length > 0 && (
+                <div className="mt-4">
                   <Panel title="Audit detail - what posted, what did not, and why">
                     <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
                       <p className="text-[13px] text-mut m-0">
@@ -1601,6 +1647,11 @@ export default function Run() {
                         run record itself - so the answer is never just
                         that the AI did it; it is what posted, what did
                         not, and the reason on record.
+                        <span className="block mt-1 text-ink font-medium">
+                          {auditRows.length} payments: {auditCounts.POSTED}{" "}
+                          posted, {auditCounts.HELD} held for approval,{" "}
+                          {auditCounts["NOT POSTED"]} not posted.
+                        </span>
                       </p>
                       <GhostBtn onClick={copyAudit}>
                         {auditCopied ? "Copied" : "Copy audit detail"}
@@ -1634,16 +1685,30 @@ export default function Run() {
                               {r.outcome}
                             </Pill>
                           </Td>
-                          <Td>{r.invoices}</Td>
+                          <Td>
+                            {r.invoiceIds.length ? (
+                              r.invoiceIds.map((id) => (
+                                <span key={id} className="block whitespace-nowrap">
+                                  {id}
+                                </span>
+                              ))
+                            ) : (
+                              "-"
+                            )}
+                          </Td>
                           <Td>{money(r.alloc)}</Td>
                           <Td>{money(r.unapplied)}</Td>
-                          <Td>{r.reason}</Td>
+                          <Td>
+                            <span className="block min-w-[240px] whitespace-normal break-words leading-[1.55]">
+                              {r.reason}
+                            </span>
+                          </Td>
                         </Row>
                       ))}
                     </DataTable>
                   </Panel>
+                </div>
                 )}
-              </div>
             </Rise>
           )}
 

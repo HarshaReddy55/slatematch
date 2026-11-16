@@ -134,7 +134,7 @@ export default function Dashboard({
   /* Stage 6 (Item 1): reload when the workspace is replaced -
      the missing half that let a switched case keep the previous
      case's figures on this view. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => setData(null));
 
   const dRes = data?.series ? lastDelta(data.series.resolution) : null;
   const dTouch = data?.series ? lastDelta(data.series.touchless) : null;

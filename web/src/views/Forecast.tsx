@@ -159,7 +159,7 @@ export default function Forecast({
   }, []);
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => setData(null));
 
   const runWhatif = useCallback((cust: string, shift: number) => {
     if (!cust) return;

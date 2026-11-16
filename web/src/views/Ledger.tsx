@@ -146,7 +146,7 @@ export default function Ledger({
   }, []);
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => setData(null));
 
   // The casebar cells land on their panel (vanilla gotoLedger*).
   useEffect(() => {

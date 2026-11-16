@@ -209,6 +209,14 @@ export default function Upload() {
   // capture agent
   const [parseText, setParseText] = useState(PARSE_SAMPLE);
   const [parse, setParse] = useState<ParseResult | null>(null);
+  /* The AI extraction layer strip (vanilla loadAiStrip): which
+     engine is active, read from /health when the view opens. */
+  const [aiLive, setAiLive] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ gemini_configured?: boolean }>("/health")
+      .then((h) => setAiLive(!!h.gemini_configured))
+      .catch(() => setAiLive(null));
+  }, []);
   const [parseNote, setParseNote] = useState("");
   const [settledRefs, setSettledRefs] = useState<string[]>([]);
   const [stageNote, setStageNote] = useState("");
@@ -223,7 +231,7 @@ export default function Upload() {
   }, []);
   useEffect(loadWs, [loadWs]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(loadWs);
+  useWsRefresh(loadWs, () => setWs(null));
 
   const pushQueue = (item: Omit<QueueItem, "id">) => {
     const id = ++queueSeq;
@@ -826,8 +834,56 @@ export default function Upload() {
       <Rise i={3}>
         <Panel
           title="Remittance and wire input - the Capture Agent"
-          sub="Paste a remittance email or lockbox text. The Capture Agent extracts the wire, verifies every reference against the open ledger, and only then may it be staged."
+          sub="Paste any remittance email or wire advice. Extraction starts automatically, and every reference is checked against the open ledger before the wire can be staged."
         >
+          {/* Vanilla's organization for this section, restored in
+              full (owner, 16 Nov 2026 - the earlier pass only moved
+              the React blocks into one panel and kept their order):
+              the wire card leads, then the mail, the tip, the AI
+              extraction layer, the actions, and the parse output
+              (pipeline strip, then the structured result) - the
+              order and contents of frontend/vanilla's panel and
+              assist.js runParse / renderWireCard / loadAiStrip. */}
+          <div className="border border-line bg-bg2 px-[18px] py-4 mt-3">
+            <div className="font-mono text-[10.5px] tracking-[0.12em] text-mut">
+              INBOUND WIRE AMOUNT
+            </div>
+            <div className="font-display text-[38px] leading-[1.1] font-semibold mt-1">
+              {pf.amount_cents ? money(pf.amount_cents) : "not parsed yet"}
+            </div>
+            <p className="text-[13px] text-mut leading-relaxed m-0 mt-1">
+              {parse ? (
+                <>
+                  Payer: <b className="text-ink">{pf.payer || "-"}</b> - read
+                  by <b className="text-ink">{parse.source || "deterministic"}</b>
+                  {parse.degraded
+                    ? ` (deterministic fallback - ${parse.ai_state === "no_key" ? "no Gemini key configured" : "Gemini unavailable for this parse"})`
+                    : ""}{" "}
+                  -{" "}
+                  {parse.verification?.verified ? (
+                    <span className="text-ok">
+                      every reference verified in the ledger
+                    </span>
+                  ) : (
+                    <span className="text-warn">
+                      some references flagged - see the pipeline below
+                    </span>
+                  )}
+                </>
+              ) : (
+                "Paste a remittance below - it is analyzed automatically and the extracted wire appears here."
+              )}
+            </p>
+            {!!pf.deduction_cents && (
+              <p className="text-[13.5px] leading-relaxed m-0 mt-2.5 border border-warn/40 bg-warnbg px-3.5 py-2.5">
+                Claimed deduction: <b>-{money(pf.deduction_cents)}</b>
+                {pf.deduction_reason ? ` - ${pf.deduction_reason}` : ""} - the
+                Deduction Agent classifies it at reconcile time, and the
+                expected-value rule decides whether to dispute it.
+              </p>
+            )}
+          </div>
+
           <textarea
             id="parse-in"
             className={taCls}
@@ -835,6 +891,10 @@ export default function Upload() {
             value={parseText}
             onChange={(e) => setParseText(e.target.value)}
           />
+          <p className="text-[12.5px] text-mut m-0 mt-2">
+            Tip: this sample references INV-1001 and INV-1002 from the demo
+            case - load the demo case first, or paste your own buyer's email.
+          </p>
           {parseNote && (
             <p className="text-[12.5px] text-mut m-0 mt-2">{parseNote}</p>
           )}
@@ -847,174 +907,168 @@ export default function Upload() {
             </p>
           )}
 
-        </Panel>
-      </Rise>
+          <div className="border border-line mt-4 px-4 py-3.5">
+            <h4 className="font-display text-[14px] font-semibold m-0">
+              AI extraction layer
+            </h4>
+            <p className="text-[13px] leading-relaxed m-0 mt-1.5">
+              {aiLive === null ? (
+                "Checking which extraction engine is active..."
+              ) : aiLive ? (
+                <>
+                  <b className="text-ok">Gemini extraction is LIVE.</b> Every
+                  parse below is read by the AI model, then verified against
+                  the ledger before anything is trusted.
+                </>
+              ) : (
+                <>
+                  <b className="text-warn">Deterministic mode.</b> No Gemini
+                  key is configured on this server, so a fixed-rule extractor
+                  is reading the text - and it is labelled as such on every
+                  result. Add a server-side GEMINI_API_KEY and the same
+                  pipeline switches to live AI extraction with no other
+                  change: the schema check and the ledger verification you see
+                  below are identical in both modes.
+                </>
+              )}
+            </p>
+          </div>
 
-      {parse && (
-        <Rise i={4}>
-          <Panel
-            title="Capture Agent - remittance analysis"
-            sub="The Capture Agent's read of the remittance above: how the wire was extracted, what verified against the ledger, and the wire it produced. Staging acts on this analysis."
-          >
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-3.5">
-                {(parse.pipeline || []).map((p, i, arr) => {
-                  const isTrust = i === arr.length - 1;
-                  return (
+          <div className="flex gap-2 flex-wrap mt-4">
+            <PrimaryBtn onClick={() => runParse(parseText)} disabled={stageBusy}>
+              Re-run analysis
+            </PrimaryBtn>
+            <GhostBtn
+              onClick={() => stageParsed(false)}
+              disabled={stageBusy || !(pf.amount_cents && pf.amount_cents > 0)}
+            >
+              Stage this wire into the workspace
+            </GhostBtn>
+            <GhostBtn
+              onClick={() => stageParsed(true)}
+              disabled={stageBusy || !(pf.amount_cents && pf.amount_cents > 0)}
+            >
+              Stage and reconcile now
+            </GhostBtn>
+          </div>
+          {stageNote && (
+            <p className="text-[12.5px] text-mut m-0 mt-2">{stageNote}</p>
+          )}
+
+          {parse && (
+            <div className="mt-4">
+              {!!(parse.pipeline || []).length && (
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 mb-3">
+                  {(parse.pipeline || []).map((p, i) => (
                     <div
                       key={i}
-                      className="glass-card rounded-none border border-line p-3.5"
+                      className="border border-line bg-bg2 px-3 py-[11px]"
                     >
-                      <div className="font-display text-[13.5px] font-semibold">
+                      <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-blue2">
                         {p.stage}
                       </div>
-                      <div className="font-mono text-[11px] text-blue2 mt-0.5">
+                      <div className="font-mono text-[11px] text-mut2 mt-0.5">
                         {p.engine}
                         {p.ms ? ` - ${p.ms} ms` : ""}
                       </div>
-                      <p className="text-[12.5px] text-mut leading-relaxed m-0 mt-1.5">
+                      <p className="text-[12px] leading-[1.5] m-0 mt-[5px]">
                         {p.detail}
-                      </p>
-                      {isTrust && allIssues.length > 0 && (
-                        <div className="flex flex-col gap-1 mt-2">
-                          {allIssues.map((x, j) => (
-                            <span
-                              key={j}
-                              className="font-mono text-[10.5px] font-medium px-2 py-[3px] rounded-[2px] tracking-[0.02em] text-bad bg-badbg break-words"
-                            >
-                              {x}
+                        {p.issues && p.issues.length > 0 && (
+                          <>
+                            <br />
+                            <span className="text-bad">
+                              {p.issues.join("; ")}
                             </span>
-                          ))}
-                        </div>
-                      )}
-                      {isTrust && unknownRefs.length > 0 && (
-                        <div className="mt-2.5">
-                          <GhostBtn onClick={seedRefsAndStage} disabled={stageBusy}>
-                            + Auto-Seed Referenced Invoices into Ledger &amp;
-                            Stage Wire ({unknownRefs.join(", ")})
-                          </GhostBtn>
-                          <p className="text-[12px] text-mut leading-relaxed m-0 mt-1.5">
-                            Creates exactly those missing invoices in the
-                            ledger - at the wire amount for a single
-                            reference, or the amounts this remittance itself
-                            lists - then stages the wire against them.
-                          </p>
-                        </div>
-                      )}
+                          </>
+                        )}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4 items-start">
-                <div className="glass-card rounded-none border border-line p-4">
-                  <h4 className="font-display text-[14px] font-semibold m-0">
-                    Structured result
-                  </h4>
-                  <p className="text-[13px] leading-relaxed m-0 mt-2">
-                    Parser: <b>{parse.source || "deterministic"}</b>{" "}
-                    {parse.degraded && (
-                      <Pill kind="warn">
-                        {parse.ai_state === "no_key"
-                          ? "Deterministic Verifier Fallback Active (No AI Key)"
-                          : "Deterministic fallback - Gemini did not answer (diagnostics on Agent Health)"}
-                      </Pill>
-                    )}
-                    <br />
-                    Amount:{" "}
-                    <b>{pf.amount_cents != null ? money(pf.amount_cents) : "-"}</b>{" "}
-                    - Payer: <b>{pf.payer || "-"}</b> - Claimed deduction:{" "}
-                    <b>
-                      {pf.deduction_cents != null
-                        ? money(pf.deduction_cents)
-                        : "-"}
-                    </b>
-                    {pf.deduction_reason ? ` (${pf.deduction_reason})` : ""}
-                    <br />
-                    References extracted:{" "}
-                    {pRefs.length ? (
+                  ))}
+                </div>
+              )}
+              <div className="border border-line px-4 py-3.5">
+                <h4 className="font-display text-[14px] font-semibold m-0">
+                  Structured result
+                </h4>
+                <p className="text-[13px] leading-[1.7] m-0 mt-2">
+                  Parser: <b>{parse.source || "deterministic"}</b>{" "}
+                  {parse.degraded && (
+                    <Pill kind="warn">
+                      {parse.ai_state === "no_key"
+                        ? "Deterministic Verifier Fallback Active (No AI Key)"
+                        : "Deterministic fallback - Gemini did not answer (diagnostics on Agent Health)"}
+                    </Pill>
+                  )}
+                  <br />
+                  Amount:{" "}
+                  <b>{pf.amount_cents != null ? money(pf.amount_cents) : "-"}</b>{" "}
+                  - Payer: <b>{pf.payer || "-"}</b> - Claimed deduction:{" "}
+                  <b>
+                    {pf.deduction_cents != null
+                      ? money(pf.deduction_cents)
+                      : "-"}
+                  </b>
+                  {pf.deduction_reason ? ` (${pf.deduction_reason})` : ""}
+                  <br />
+                  References extracted:{" "}
+                  {pRefs.length ? (
+                    <span className="inline-flex gap-1.5 flex-wrap">
+                      {pRefs.map((r) => (
+                        <Pill key={r} kind="info">
+                          {r}
+                        </Pill>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="text-mut">none</span>
+                  )}
+                  <br />
+                  {parse.verification?.verified ? (
+                    <Pill kind="ok">
+                      Verifier: every reference exists in the open ledger
+                    </Pill>
+                  ) : allIssues.length > 0 ? (
+                    <>
+                      Verifier flags:{" "}
                       <span className="inline-flex gap-1.5 flex-wrap">
-                        {pRefs.map((r) => (
-                          <Pill key={r} kind="info">
-                            {r}
+                        {allIssues.map((x, j) => (
+                          <Pill key={j} kind="bad">
+                            {x}
                           </Pill>
                         ))}
                       </span>
-                    ) : (
-                      <span className="text-mut">none</span>
-                    )}
-                  </p>
-                  <details className="mt-2.5">
-                    <summary className="text-[12px] text-mut cursor-pointer">
-                      Raw response
-                    </summary>
-                    <pre className="font-mono text-[11.5px] leading-relaxed bg-[#101014] text-[#c3cfe9] p-3.5 rounded-none overflow-auto mt-2 whitespace-pre-wrap break-words">
-                      {JSON.stringify(parse, null, 2)}
-                    </pre>
-                  </details>
-                </div>
-
-                <div className="glass-card rounded-none border border-line p-4">
-                  <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
-                    The wire
-                  </div>
-                  <div className="font-display text-[30px] leading-none font-semibold mt-1.5">
-                    {pf.amount_cents ? money(pf.amount_cents) : "not parsed yet"}
-                  </div>
-                  <p className="text-[13px] leading-relaxed m-0 mt-2">
-                    Payer: <b>{pf.payer || "-"}</b> - read by{" "}
-                    <b>{parse.source || "deterministic"}</b>
-                    {parse.degraded
-                      ? ` (deterministic fallback - ${parse.ai_state === "no_key" ? "no Gemini key configured" : "Gemini unavailable for this parse"})`
-                      : ""}{" "}
-                    -{" "}
-                    {parse.verification?.verified ? (
-                      <span className="text-ok">
-                        every reference verified in the ledger
-                      </span>
-                    ) : (
-                      <span className="text-warn">
-                        some references flagged - see the trust decision above
-                      </span>
-                    )}
-                  </p>
-                  {!!pf.deduction_cents && (
-                    <p className="text-[13px] leading-relaxed m-0 mt-2 border border-warn/40 bg-warnbg rounded-none px-3 py-2">
-                      Claimed deduction: <b>-{money(pf.deduction_cents)}</b>
-                      {pf.deduction_reason ? ` - ${pf.deduction_reason}` : ""} -
-                      the Deduction Agent classifies it at reconcile time, and
-                      the expected-value rule decides whether to dispute it.
+                    </>
+                  ) : null}
+                </p>
+                {unknownRefs.length > 0 && (
+                  <div className="mt-2.5">
+                    <GhostBtn onClick={seedRefsAndStage} disabled={stageBusy}>
+                      + Auto-Seed Referenced Invoices into Ledger &amp; Stage
+                      Wire ({unknownRefs.join(", ")})
+                    </GhostBtn>
+                    <p className="text-[12px] text-mut leading-relaxed m-0 mt-1.5">
+                      Creates exactly those missing invoices in the ledger -
+                      at the wire amount for a single reference, or the
+                      amounts this remittance itself lists - then stages the
+                      wire against them.
                     </p>
-                  )}
-                  <div className="flex gap-2 flex-wrap mt-3">
-                    <PrimaryBtn
-                      onClick={() => runParse(parseText)}
-                      disabled={stageBusy}
-                    >
-                      Re-run analysis
-                    </PrimaryBtn>
-                    <GhostBtn
-                      onClick={() => stageParsed(false)}
-                      disabled={stageBusy || !(pf.amount_cents && pf.amount_cents > 0)}
-                    >
-                      Stage this wire into the workspace
-                    </GhostBtn>
-                    <GhostBtn
-                      onClick={() => stageParsed(true)}
-                      disabled={stageBusy || !(pf.amount_cents && pf.amount_cents > 0)}
-                    >
-                      Stage and reconcile now
-                    </GhostBtn>
                   </div>
-                  {stageNote && (
-                    <p className="text-[12.5px] text-mut m-0 mt-2">{stageNote}</p>
-                  )}
-                </div>
+                )}
+                <details className="mt-2.5">
+                  <summary className="text-[12px] text-mut cursor-pointer">
+                    Raw response
+                  </summary>
+                  <pre className="font-mono text-[11.5px] leading-relaxed bg-[#101014] text-[#c3cfe9] p-3.5 rounded-none overflow-auto mt-2 whitespace-pre-wrap break-words">
+                    {JSON.stringify(parse, null, 2)}
+                  </pre>
+                </details>
               </div>
-          </Panel>
-        </Rise>
-      )}
+            </div>
+          )}
+        </Panel>
+      </Rise>
 
-      <Rise i={5}>
+      <Rise i={4}>
         <Panel title="Staged in this workspace">
           {!ws?.staged_payments ? (
             <p className="text-[13px] text-mut m-0 mt-2">

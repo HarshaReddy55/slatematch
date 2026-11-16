@@ -110,7 +110,7 @@ export default function Health() {
   }, []);
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => setData(null));
 
   const h = data?.h;
   const m = h?.model_metrics || {};

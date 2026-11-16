@@ -44,7 +44,10 @@ export default function Sap() {
   }, []);
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => {
+    setDocs(null);
+    setWs(null);
+  });
 
   const ready = docs && docs.run_id && docs.documents.length > 0;
   const staged = !ready && ws?.run_status === "staged";

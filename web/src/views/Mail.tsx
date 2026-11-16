@@ -151,7 +151,10 @@ export default function Mail() {
   }, []);
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
-  useWsRefresh(load);
+  useWsRefresh(load, () => {
+    setHub(null);
+    setWs(null);
+  });
 
   const items = hub
     ? cat === "outbox"
