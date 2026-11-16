@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import logoGlass from "./assets/logo-glass.png";
 import Dashboard from "./views/Dashboard";
 import Cases from "./views/Cases";
 import Upload from "./views/Upload";
@@ -246,12 +247,31 @@ export default function App() {
     <main className="min-h-screen text-ink font-sans">
       <div className="flex flex-col lg:flex-row lg:items-start">
         <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-line lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
-          <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2.5 shrink-0">
+          <div className="flex items-start justify-between gap-3 px-4 pt-5 pb-4 shrink-0">
             <div>
-              <div className="font-display text-[17px] font-bold leading-none tracking-[0.01em]">
-                SlateMatch
+              <div className="flex items-center gap-3.5">
+                <img
+                  src={logoGlass}
+                  alt="SlateMatch logo"
+                  className="h-12 w-12 lg:h-[60px] lg:w-[60px] shrink-0 select-none"
+                  draggable={false}
+                />
+                <div className="font-display text-[24px] lg:text-[28px] font-semibold leading-none tracking-[0.004em] whitespace-nowrap">
+                  s
+                  <span
+                    className="inline-block"
+                    style={{
+                      transform: "scaleY(1.14)",
+                      transformOrigin: "50% 100%",
+                      marginRight: "-0.052em",
+                    }}
+                  >
+                    /
+                  </span>
+                  ate match
+                </div>
               </div>
-              <div className="font-mono text-[9.5px] text-mut2 tracking-[0.06em] mt-1.5">
+              <div className="font-mono text-[9.5px] text-mut2 tracking-[0.14em] mt-3 whitespace-nowrap">
                 AUTONOMOUS CASH APPLICATION AGENT
               </div>
             </div>

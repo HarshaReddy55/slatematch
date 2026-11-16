@@ -214,17 +214,19 @@ def _workspace_state(repo):
     pending = repo.pending_payments()
     runs = repo.list_runs(1)
     case = repo.get_meta("active_case")
+    open_invs = repo.open_invoices()
+    all_pays = repo.all_payments()
     # v31 two-stage lifecycle: a loaded case is STAGED until an explicit
     # run executes it. Loading a case clears prior runs, so the state is
     # exact: case + no run = staged; case + run = executed.
     run_status = "empty" if not case else ("executed" if runs else "staged")
     return {"case": case,
             "run_status": run_status,
-            "open_invoice_total_cents": sum(i.gross_cents for i in repo.open_invoices()),
-            "staged_payment_total_cents": sum(pp.amount_cents for pp in repo.all_payments()),
-            "open_invoices": len(repo.open_invoices()),
-            "staged_payments": len(repo.all_payments()),
-            "all_payments": [asdict(p) for p in repo.all_payments()],
+            "open_invoice_total_cents": sum(i.gross_cents for i in open_invs),
+            "staged_payment_total_cents": sum(pp.amount_cents for pp in all_pays),
+            "open_invoices": len(open_invs),
+            "staged_payments": len(all_pays),
+            "all_payments": [asdict(p) for p in all_pays],
             "pending_payments": [asdict(p) for p in pending],
             "latest_run": runs[0] if runs else None,
             "approvals_pending": len(repo.list_proposed())}
@@ -1335,13 +1337,33 @@ def export_bundle(ctx=Depends(auth_context)):
         "Content-Disposition": 'attachment; filename="slatematch-audit-bundle.json"'})
 
 
+_pdf_cache = {}
+
 @app.get("/api/v1/export/bundle.pdf")
 def export_bundle_pdf(ctx=Depends(auth_context)):
-    """The same bundle as a clean, print-ready PDF (bundle_pdf.py)."""
+    """The same bundle as a clean, print-ready PDF (bundle_pdf.py).
+
+    Rendering is the slowest call in the product (seconds, against
+    single-digit milliseconds elsewhere), and controllers routinely
+    download the same bundle twice. The bundle dict is assembled
+    fresh on every call (cheap) and hashed with its one volatile
+    field (generated_at) excluded; the rendered bytes are served
+    from memory while the underlying bundle is identical, so any
+    new run, decision or audit entry re-renders exactly once, and
+    a repeat download returns the same file, stamp included."""
     need(ctx, "read")
     bundle = _build_bundle(ctx)
-    from bundle_pdf import render_bundle_pdf
-    return Response(render_bundle_pdf(bundle), media_type="application/pdf", headers={
+    stable = {k: v for k, v in bundle.items() if k != "generated_at"}
+    key = hashlib.sha256(json.dumps(stable, sort_keys=True, default=str).encode()).hexdigest()
+    cache_key = (ctx["tenant_id"], key)
+    pdf = _pdf_cache.get(cache_key)
+    if pdf is None:
+        from bundle_pdf import render_bundle_pdf
+        pdf = render_bundle_pdf(bundle)
+        if len(_pdf_cache) > 8:
+            _pdf_cache.clear()
+        _pdf_cache[cache_key] = pdf
+    return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": 'attachment; filename="slatematch-audit-bundle.pdf"'})
 
 @app.get("/api/v1/export/matches.csv")
@@ -1607,10 +1629,19 @@ def why_not(body: WhyNotIn, ctx=Depends(auth_context)):
     need(ctx, "read"); invs = repo_for(ctx["tenant_id"]).open_invoices()
     return why_not_invoice(_pay(body.payment), invs, body.invoice_id, Policy())
 
+_evaluations_cache = {}
+
 @app.get("/api/v1/evaluations")
 def evaluations():
     """Live evaluation on the labelled seed scenarios (fresh temp DB per call
-    is unnecessary: scenarios run in-memory against the seed ledger)."""
+    is unnecessary: scenarios run in-memory against the seed ledger).
+
+    The result is a pure function of the code - fixed seed scenarios,
+    default policy, no workspace input - so it is computed once per
+    process and then served from memory (~44ms of MILP/greedy solves
+    per call became ~0ms for every view after the first)."""
+    if "payload" in _evaluations_cache:
+        return _evaluations_cache["payload"]
     invs = seed_invoices(); pays = {p.payment_id: p for p in seed_payments()}
     from batch import resolve_candidates
 
@@ -1636,9 +1667,11 @@ def evaluations():
     exact = sum(r["milp_residual_cents"] == 0 for r in rows)
     greedy_correct = sum(r["greedy_correct"] for r in rows)
     n = len(GROUND_TRUTH)
-    return {"cases": rows, "milp_accuracy": round(correct / n, 4), "greedy_accuracy": round(greedy_correct / n, 4),
+    payload = {"cases": rows, "milp_accuracy": round(correct / n, 4), "greedy_accuracy": round(greedy_correct / n, 4),
             "milp_exact_rate": round(exact / n, 4),
-            "basis": "Labelled synthetic seed scenarios (split, PO-won, discount+deduction, OCR-repaired reference, amount-only, multi-invoice, exact). Computed live per call."}
+            "basis": "Labelled synthetic seed scenarios (split, PO-won, discount+deduction, OCR-repaired reference, amount-only, multi-invoice, exact). Computed by this server's solver code from the fixed scenario set."}
+    _evaluations_cache["payload"] = payload
+    return payload
 
 
 

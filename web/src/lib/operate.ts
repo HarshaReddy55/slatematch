@@ -203,55 +203,9 @@ export function runClassify(it: {
   return 2;
 }
 
-/* Stage 5C: the series colours are the Stage 5C legibility-lifted
-   status tones (the React theme's ok / warn / bad), not the
-   original hexes - the chart legend renders its labels in these
-   colours as text, and the originals measured 2.64:1 and 4.34:1
-   on the panel tier in the dark-on-dark audit (STAGE5C.md). */
-export const CHART_COLS = ["#5eeaa0", "#f5cb5f", "#ff9ea0"];
-export const CHART_LABELS = [
-  "Auto-posted",
-  "Held for a person",
-  "Needs investigation",
-];
-
-/** runChartHtml()'s geometry, point for point: cumulative step paths
-    over the run's items in order, 600x116 viewBox. */
-export function runChartGeometry(
-  items: { auto_posted?: boolean; status?: string }[]
-) {
-  const W = 600,
-    H = 116,
-    PL = 4,
-    PR = 6,
-    PT = 10,
-    PB = 8,
-    n = items.length;
-  const cum: number[][] = [[0, 0, 0]];
-  const cur = [0, 0, 0];
-  items.forEach((it) => {
-    cur[runClassify(it)]++;
-    cum.push([...cur]);
-  });
-  const maxY = Math.max(1, ...cur);
-  const X = (i: number) => PL + ((W - PL - PR) * i) / n;
-  const Y = (v: number) => H - PB - (v / maxY) * (H - PT - PB);
-  const step = (c: number) =>
-    cum
-      .map((v, i) =>
-        i === 0
-          ? `M${X(0).toFixed(1)} ${Y(v[c]).toFixed(1)}`
-          : `H${X(i).toFixed(1)} V${Y(v[c]).toFixed(1)}`
-      )
-      .join(" ");
-  const series = [0, 1, 2].map((c) => {
-    const d = step(c);
-    const fill = `${d} L${X(n).toFixed(1)} ${Y(0).toFixed(1)} L${X(0).toFixed(1)} ${Y(0).toFixed(1)} Z`;
-    return { d, fill, endX: X(n), endY: Y(cur[c]), count: cur[c] };
-  });
-  const grid = [0.25, 0.5, 0.75].map((f) => Y(maxY * f));
-  return { series, grid, W, H };
-}
+/* The cumulative outcome chart (CHART_COLS / CHART_LABELS /
+   runChartGeometry) was removed with the chart itself - owner
+   override, 16 Nov 2026: it was not serving its purpose. */
 
 /** outcomeBarHtml(): share of the wire explained by allocated cash. */
 export function outcomeShare(alloc: number, resid: number): number {

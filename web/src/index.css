@@ -240,6 +240,30 @@ body {
 .flash-target {
   animation: flashring 1.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* The live run strip's running card, ported from vanilla's
+   .anode.live.running (owner, 16 Nov 2026: agent status during a
+   run displays as in vanilla): blue border, the deep-blue ground
+   and the 1.15s pulse ring. The ground colour rides along so the
+   utility classes in Run.tsx only carry the animation hook. */
+.anode-running {
+  background: #2e3d5e;
+  animation: anodepulse 1.15s ease-in-out infinite;
+}
+@keyframes anodepulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(61, 117, 232, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(61, 117, 232, 0.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anode-running {
+    animation: none;
+  }
+}
 @keyframes flashring {
   0%,
   55% {

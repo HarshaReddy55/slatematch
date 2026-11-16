@@ -605,6 +605,13 @@ export default function Upload() {
         </Rise>
       )}
 
+      {/* The two file streams sit side by side (owner, 16 Nov
+          2026): each used to take a full-width panel in one long
+          stack. The remittance input stays DOWN, full width below
+          them (owner revision, 17:44) - it is a working surface,
+          not a file option. Results and the staged table stay
+          full width too - they are data, not options. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
       <Rise i={1}>
         <Panel
           title="1. Open invoices (AR ledger)"
@@ -814,6 +821,7 @@ export default function Upload() {
           )}
         </Panel>
       </Rise>
+      </div>
 
       <Rise i={3}>
         <Panel
@@ -838,8 +846,16 @@ export default function Upload() {
               against what is still open, not a problem with this wire.
             </p>
           )}
-          {parse && (
-            <>
+
+        </Panel>
+      </Rise>
+
+      {parse && (
+        <Rise i={4}>
+          <Panel
+            title="Capture Agent - remittance analysis"
+            sub="The Capture Agent's read of the remittance above: how the wire was extracted, what verified against the ledger, and the wire it produced. Staging acts on this analysis."
+          >
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-3.5">
                 {(parse.pipeline || []).map((p, i, arr) => {
                   const isTrust = i === arr.length - 1;
@@ -994,12 +1010,11 @@ export default function Upload() {
                   )}
                 </div>
               </div>
-            </>
-          )}
-        </Panel>
-      </Rise>
+          </Panel>
+        </Rise>
+      )}
 
-      <Rise i={4}>
+      <Rise i={5}>
         <Panel title="Staged in this workspace">
           {!ws?.staged_payments ? (
             <p className="text-[13px] text-mut m-0 mt-2">

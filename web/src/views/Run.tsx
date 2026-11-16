@@ -8,13 +8,10 @@ import {
   goView,
   invariantGrade,
   outcomeShare,
-  runChartGeometry,
   setIntent,
   takeIntent,
   toggleRunDiffPanel,
   INTENT_EVENT,
-  CHART_COLS,
-  CHART_LABELS,
   type AgentRecord,
   type ApprovalEntry,
   type BatchResponse,
@@ -26,6 +23,7 @@ import {
 } from "../lib/operate";
 import { gradeCase, normalisedStored } from "../lib/insight";
 import { requestShellRefresh } from "../lib/chrome";
+import Orb from "../ui/Orb";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
@@ -39,14 +37,19 @@ import Desk from "./Desk";
 import MatchDetail from "./MatchDetail";
 
 /* Stage 3: Run Reconciliation (04). Structure follows blueprint 1:
-   run summary card (Jeet boot-sequence packaging) with the cumulative
-   outcome chart (Shawn, v58 language), the agent strip as beUI
-   Agent Activity rows with the evidence payload one click down,
-   staged panel and run controls, live streaming lanes driven by the
-   same SSE events as vanilla runLive(), case verdict, agent brief,
-   matches and exceptions, the approvals queue, and the dispute
-   desk. Everything vanilla shows exists here, organised into panels
-   instead of one endless scroll. */
+   run summary card (Jeet boot-sequence packaging), the agent strip
+   as beUI Agent Activity rows with the evidence payload one click
+   down, staged panel and run controls, live streaming lanes driven
+   by the same SSE events as vanilla runLive(), case verdict, agent
+   brief, matches and exceptions, the audit detail (one line per
+   payment: posted, held or not posted, with its reason, and a Copy
+   button), the approvals queue, and the dispute desk. Everything
+   vanilla shows exists here, organised into panels instead of one
+   endless scroll.
+   Owner override, 16 Nov 2026: the cumulative outcome chart that
+   v58 carried in the run summary is REMOVED - it was not serving
+   its purpose. Vanilla keeps its own chart; this override is
+   React-only. */
 
 interface RunData {
   ws: WorkspaceOperate;
@@ -81,6 +84,17 @@ const LIVE_DEFS: [string, string][] = [
   ["Briefing", "drafts composed"],
 ];
 
+/* Vanilla's AGENT_ORBS: the animated orb shown beside the agent's
+   name while its stage is running, with its spoken label. */
+const AGENT_ORBS: [string, string][] = [
+  ["searching", "Scanning"],
+  ["searching", "Searching"],
+  ["solving", "Solving"],
+  ["working", "Working"],
+  ["working", "Deciding"],
+  ["composing", "Composing"],
+];
+
 export default function Run() {
   const [data, setData] = useState<RunData | null>(null);
   const [error, setError] = useState("");
@@ -92,6 +106,7 @@ export default function Run() {
   } | null>(null);
   const [apprReload, setApprReload] = useState(0);
   const [deskReload, setDeskReload] = useState(0);
+  const [auditCopied, setAuditCopied] = useState(false);
 
   // live run state
   const [running, setRunning] = useState(false);
@@ -765,15 +780,99 @@ export default function Run() {
     }
   };
 
-  const chart =
-    data && data.matches.length >= 2
-      ? runChartGeometry(
-          data.matches.map((m) => ({
-            status: m.status,
-            auto_posted: m.result?.auto_posted,
-          }))
-        )
-      : null;
+  /* ---------- audit detail (owner, 16 Nov 2026) ------------------
+     One line per payment in the shown run: posted, held for
+     approval, or not posted, with the reason taken from the run
+     record itself (rung, solver reasoning, exception kind and its
+     recommended action). This is the audit answer to "the AI did
+     it": a record, not a claim. The Copy button puts the same
+     lines on the clipboard as plain text. */
+  const auditRows = (() => {
+    if (!data || !shownRunId) return [];
+    const excFirst = new Map<string, RunException>();
+    for (const e of data.exceptions)
+      if (!excFirst.has(e.payment_id)) excFirst.set(e.payment_id, e);
+    const rows = data.matches.map((m) => {
+      const lines = m.result?.lines || [];
+      const alloc = lines.reduce((a, l) => a + (l.net_cents || 0), 0);
+      const outcome =
+        m.status === "AUTO_POSTED"
+          ? "POSTED"
+          : m.status === "PROPOSED"
+            ? "HELD"
+            : "NOT POSTED";
+      const bits: string[] = [];
+      const rung = m.result?.matched_by || m.result?.solver || m.solver;
+      if (rung) bits.push(`Matched by ${rung}`);
+      const step = m.result?.reasoning?.steps?.[0];
+      if (step) bits.push(step);
+      const exc = excFirst.get(m.payment_id);
+      if (outcome === "POSTED") {
+        bits.push(`confidence ${Number(m.confidence ?? 0).toFixed(2)}`);
+        if (m.residual_cents)
+          bits.push(`${money(m.residual_cents)} left unapplied`);
+      } else if (outcome === "HELD") {
+        if (!step)
+          bits.push(
+            "Held for a person's approval before posting: policy proposes above the maker-checker threshold or below the automation confidence line, it does not post"
+          );
+        if (exc) bits.push(`${exc.kind}: ${exc.recommended_action}`);
+      } else if (exc) {
+        bits.push(`${exc.kind}: ${exc.recommended_action}`);
+      }
+      return {
+        pid: m.payment_id,
+        outcome: outcome as "POSTED" | "HELD" | "NOT POSTED",
+        invoices: lines.map((l) => l.invoice_id).join(", ") || "-",
+        alloc,
+        unapplied: m.residual_cents || 0,
+        reason: bits.join(" - ") || m.status,
+      };
+    });
+    const seen = new Set(data.matches.map((m) => m.payment_id));
+    for (const e of data.exceptions) {
+      if (seen.has(e.payment_id)) continue;
+      seen.add(e.payment_id);
+      rows.push({
+        pid: e.payment_id,
+        outcome: "NOT POSTED" as const,
+        invoices: "-",
+        alloc: 0,
+        unapplied: e.detail?.amount_cents || 0,
+        reason: `${e.kind} (${e.severity}): ${e.recommended_action}`,
+      });
+    }
+    return rows;
+  })();
+
+  const copyAudit = async () => {
+    const counts = { POSTED: 0, HELD: 0, "NOT POSTED": 0 };
+    auditRows.forEach((r) => {
+      counts[r.outcome]++;
+    });
+    const text = [
+      "SlateMatch - audit detail",
+      `Run ${shownRunId} - ${auditRows.length} payments: ${counts.POSTED} posted, ${counts.HELD} held for approval, ${counts["NOT POSTED"]} not posted.`,
+      "From the run record: what posted, what did not, and why.",
+      "",
+      ...auditRows.map(
+        (r) =>
+          `${r.pid} | ${r.outcome} | invoices ${r.invoices} | allocated ${money(r.alloc)} | unapplied ${money(r.unapplied)} | ${r.reason}`
+      ),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setAuditCopied(true);
+    setTimeout(() => setAuditCopied(false), 2000);
+  };
 
   const gradeResult =
     data?.grade?.kind === "case" && data.ws.case
@@ -860,87 +959,6 @@ export default function Run() {
                       </div>
                     </>
                   )}
-                  {chart && !excFilter && (
-                    <div className="mt-3">
-                      <svg
-                        viewBox={`0 0 ${chart.W} ${chart.H}`}
-                        preserveAspectRatio="none"
-                        className="w-full h-[116px]"
-                        role="img"
-                        aria-label="Cumulative run outcomes"
-                      >
-                        <defs>
-                          {CHART_COLS.map((h, c) => (
-                            <g key={c}>
-                              <linearGradient
-                                id={`rcg${c}`}
-                                x1="0"
-                                y1="0"
-                                x2="0"
-                                y2="1"
-                              >
-                                <stop offset="0" stopColor={h} stopOpacity="0.20" />
-                                <stop offset="1" stopColor={h} stopOpacity="0" />
-                              </linearGradient>
-                              <pattern
-                                id={`rcd${c}`}
-                                width="7"
-                                height="7"
-                                patternUnits="userSpaceOnUse"
-                              >
-                                <circle cx="1.6" cy="1.6" r="1.1" fill={h} fillOpacity="0.38" />
-                              </pattern>
-                            </g>
-                          ))}
-                        </defs>
-                        {chart.grid.map((y, i) => (
-                          <line
-                            key={i}
-                            x1="4"
-                            x2="594"
-                            y1={y}
-                            y2={y}
-                            stroke="rgba(255,255,255,.055)"
-                            strokeWidth="1"
-                            strokeDasharray="2 5"
-                          />
-                        ))}
-                        {chart.series.map((s, c) => (
-                          <g key={c}>
-                            <path d={s.fill} fill={`url(#rcg${c})`} stroke="none" />
-                            <path d={s.fill} fill={`url(#rcd${c})`} stroke="none" />
-                            <path
-                              d={s.d}
-                              fill="none"
-                              stroke={CHART_COLS[c]}
-                              strokeWidth="2"
-                              strokeLinejoin="round"
-                              strokeLinecap="round"
-                            />
-                            <circle cx={s.endX} cy={s.endY} r="7" fill={CHART_COLS[c]} opacity="0.18" />
-                            <circle cx={s.endX} cy={s.endY} r="3" fill={CHART_COLS[c]} />
-                            <circle cx={s.endX} cy={s.endY} r="1.2" fill="#ffffff" opacity="0.85" />
-                          </g>
-                        ))}
-                      </svg>
-                      <div className="flex gap-4 flex-wrap mt-1.5 text-[12px]">
-                        {chart.series.map((s, c) => (
-                          <span key={c}>
-                            <span
-                              className="inline-block w-2 h-2 rounded-[50%] mr-1.5"
-                              style={{ background: CHART_COLS[c] }}
-                            />
-                            <b style={{ color: CHART_COLS[c] }}>
-                              {CHART_LABELS[c]} {s.count}
-                            </b>
-                          </span>
-                        ))}
-                        <span className="text-mut">
-                          payments in run order, cumulative
-                        </span>
-                      </div>
-                    </div>
-                  )}
                 </>
               ) : (
                 <p className="text-[13px] text-mut m-0 mt-1">
@@ -993,8 +1011,23 @@ export default function Run() {
                           {i > 0 && (
                             <span className="self-center text-mut2">→</span>
                           )}
-                          <div className="glass-card rounded-none border border-line px-3 py-2.5 min-w-[128px]">
-                            <b className="text-[13px]">{name}</b>
+                          <div
+                            className={`glass-card rounded-none border px-3 py-2.5 min-w-[128px] ${
+                              st === "running"
+                                ? "border-blue anode-running"
+                                : "border-line"
+                            } ${st === "queued" ? "opacity-50" : ""}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <b className="text-[13px]">{name}</b>
+                              {st === "running" && (
+                                <Orb
+                                  state={AGENT_ORBS[i][0]}
+                                  size={28}
+                                  label={AGENT_ORBS[i][1]}
+                                />
+                              )}
+                            </div>
                             <div className="text-[12px] text-mut">{counts[i]}</div>
                             <div className="text-[12px] text-mut">
                               {st === "running"
@@ -1560,6 +1593,56 @@ export default function Run() {
                     </p>
                   )}
                 </Panel>
+                {auditRows.length > 0 && (
+                  <Panel title="Audit detail - what posted, what did not, and why">
+                    <div className="flex items-center justify-between gap-3 flex-wrap mt-1">
+                      <p className="text-[13px] text-mut m-0">
+                        One line per payment in this run, taken from the
+                        run record itself - so the answer is never just
+                        that the AI did it; it is what posted, what did
+                        not, and the reason on record.
+                      </p>
+                      <GhostBtn onClick={copyAudit}>
+                        {auditCopied ? "Copied" : "Copy audit detail"}
+                      </GhostBtn>
+                    </div>
+                    <DataTable
+                      head={
+                        <>
+                          <Th>Payment</Th>
+                          <Th>Outcome</Th>
+                          <Th>Matched invoices</Th>
+                          <Th>Allocated</Th>
+                          <Th>Unapplied</Th>
+                          <Th>Reason</Th>
+                        </>
+                      }
+                    >
+                      {auditRows.map((r) => (
+                        <Row key={r.pid}>
+                          <Td>{r.pid}</Td>
+                          <Td>
+                            <Pill
+                              kind={
+                                r.outcome === "POSTED"
+                                  ? "ok"
+                                  : r.outcome === "HELD"
+                                    ? "warn"
+                                    : "bad"
+                              }
+                            >
+                              {r.outcome}
+                            </Pill>
+                          </Td>
+                          <Td>{r.invoices}</Td>
+                          <Td>{money(r.alloc)}</Td>
+                          <Td>{money(r.unapplied)}</Td>
+                          <Td>{r.reason}</Td>
+                        </Row>
+                      ))}
+                    </DataTable>
+                  </Panel>
+                )}
               </div>
             </Rise>
           )}
