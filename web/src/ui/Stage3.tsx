@@ -159,13 +159,16 @@ export function PrimaryBtn({
   children,
   onClick,
   disabled,
+  id,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  id?: string;
 }) {
   return (
     <button
+      id={id}
       className="inline-flex items-center gap-2 font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 disabled:cursor-default pressable"
       onClick={onClick}
       disabled={disabled}

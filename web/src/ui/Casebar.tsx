@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { api } from "../lib/api";
 import {
   briefVerdict,
@@ -7,7 +14,7 @@ import {
   requestShellRefresh,
   type WorkspaceFull,
 } from "../lib/chrome";
-import { goView } from "../lib/operate";
+import { goView, setIntent, toggleRunDiffPanel } from "../lib/operate";
 
 /* Stage 4 shell: the casebar and the brief mini-strip, ported from
    vanilla state.js (renderCasebar, fillBriefMini) with the audit
@@ -16,7 +23,39 @@ import { goView } from "../lib/operate";
    and the brief strip keeps ONLY the verdict line (the three tiles
    stay on the Dashboard, where they already live as impact stats).
    Cells, click targets, option lists and toast sentences are
-   vanilla's. */
+   vanilla's.
+   Stage 5: the two stacked blocks became ONE slim strip (Harsha:
+   the Stage 4 block pushed the Dashboard down). Same panel, same
+   cells and controls; the verdict is now a hairline-separated row
+   inside the strip instead of a second card below it. The cells
+   also regained vanilla's landings: the ledger cells scroll to
+   their panel and flash it, Latest run opens the run comparison,
+   and Approvals waiting jumps to the queue (all via intents).
+   Stage 5B moved the casebar's contents into the shell's sidebar;
+   Stage 5C reverses that (Harsha: "The sidebar must contain the
+   contents not the demo case details itself" and "every page
+   needs to have the case details as in vanilla"). The strip is
+   back at the top of the content column, present identically on
+   every view: identity and the four stat cells on the first row,
+   the verdict and the controls (tenant and case selectors,
+   Export, More) on the second. Every cell, control, title, intent
+   and aria label is unchanged from 5B. Two layout deltas from the
+   v1 strip, both from Harsha's findings: the selectors are wider
+   (264 / 288px) so their closed faces truncate far less, and the
+   More menu keeps the 5B body-portalled fixed flyout (the strip
+   panel's backdrop filter would otherwise become its containing
+   block), now dropping below its button, right-aligned, clamped
+   to the viewport once measured, closing on outside click,
+   Escape, scroll or resize.
+   Stage 5D (Harsha: "Where is run option near the case as in
+   vanilla and where is case expansion?"): the four stat cells
+   are vanilla's cclink controls and now read as controls -
+   pointer cursor, a hover lift on the cell and the label
+   turning blue2, exactly vanilla's .cclink:hover treatment -
+   and Latest run toggles the run comparison in the SHELL,
+   directly under this strip (vanilla's #run-diff position),
+   instead of opening a copy inside the Run view. The Active
+   case cell stays non-clickable, as in vanilla. */
 
 interface TenantInfo {
   tenants: { id: string; name: string; erp: string }[];
@@ -32,12 +71,18 @@ interface ScenarioLite {
 
 const cellK =
   "font-mono text-[9.5px] tracking-[0.1em] uppercase text-mut flex items-center gap-1.5";
+/* Vanilla .cc.cclink: the cell lifts on hover and its label
+   turns blue2 (the .cc-link / .cc-k rules in index.css, hand-
+   written like vanilla's - Tailwind gates its hover utilities
+   behind @media (hover:hover)). The negative margins absorb
+   the padding so the strip's layout does not move. */
 const cellBtn =
-  "text-left bg-transparent border-0 p-0 cursor-pointer min-w-0";
+  "cc-link text-left bg-transparent border-0 px-2 py-1 -mx-2 -my-1 rounded-[3px] cursor-pointer min-w-0";
+const cellKLink = cellK + " cc-k";
 const ghostBtn =
   "font-sans text-[12px] font-medium px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap";
 const selectCls =
-  "bg-bg2 border border-line rounded-[3px] px-2 py-1.5 text-[12.5px] text-ink max-w-[300px]";
+  "glass-select border border-line rounded-[3px] px-2 py-1.5 text-[12.5px] text-ink";
 
 export default function Casebar({
   view,
@@ -51,9 +96,14 @@ export default function Casebar({
   const [tenants, setTenants] = useState<TenantInfo | null>(null);
   const [cases, setCases] = useState<ScenarioLite[] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(
+    null
+  );
   const runSeen = useRef<string | null>(null);
   const verdictFor = useRef<string | null>(null);
-  const menuRef = useRef<HTMLSpanElement>(null);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuElRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -133,12 +183,62 @@ export default function Casebar({
   useEffect(() => {
     if (!menuOpen) return;
     const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setMenuOpen(false);
+      const t = e.target as Node;
+      if (menuWrapRef.current && menuWrapRef.current.contains(t)) return;
+      if (menuElRef.current && menuElRef.current.contains(t)) return;
+      setMenuOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onMove = () => setMenuOpen(false);
     document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
   }, [menuOpen]);
+
+  /* The flyout's first position is estimated from the button's
+     rect (below the button, right-aligned with it); once the menu
+     has mounted, its measured size clamps it inside the viewport. */
+  const toggleMenu = () => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    const r = menuBtnRef.current?.getBoundingClientRect();
+    if (r) {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const W = 216;
+      const H = 200;
+      let left = r.right - W;
+      if (left < 8) left = 8;
+      if (left + W > vw - 8) left = Math.max(8, vw - W - 8);
+      let top = r.bottom + 6;
+      if (top + H > vh - 8) top = Math.max(8, r.top - H - 6);
+      setMenuPos({ left, top });
+    }
+    setMenuOpen(true);
+  };
+
+  useLayoutEffect(() => {
+    if (!menuOpen || !menuElRef.current || !menuPos) return;
+    const m = menuElRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let { left, top } = menuPos;
+    if (m.right > vw - 8) left = Math.max(8, vw - m.width - 8);
+    if (m.bottom > vh - 8) top = Math.max(8, vh - m.height - 8);
+    if (left !== menuPos.left || top !== menuPos.top)
+      setMenuPos({ left, top });
+  }, [menuOpen, menuPos]);
 
   const c = ws?.case;
   const lr = ws?.latest_run;
@@ -236,211 +336,246 @@ export default function Casebar({
       : "");
 
   return (
-    <div className="flex flex-col gap-2">
-      <div
-        className="glass-panel rounded-md border border-white/[0.11] px-4 py-3 flex items-stretch gap-4 flex-wrap"
-        aria-label="Case bar"
-      >
-        <div className="min-w-[180px] flex-1">
-          <div className={cellK}>
-            <span className="inline-block w-[7px] h-[7px] rounded-full bg-ok" />
-            Active case
+    <div
+      className="glass-panel rounded-md border border-white/[0.11] px-4 py-2.5"
+      aria-label="Case bar"
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-x-4 gap-y-2">
+          <div className="flex-1 min-w-0">
+            <div className={cellK}>
+              <span className="inline-block w-[7px] h-[7px] rounded-full bg-ok" />
+              Active case
+            </div>
+            <div className="text-[13px] font-medium mt-0.5 leading-snug lg:whitespace-nowrap lg:overflow-hidden lg:text-ellipsis">
+              {c ? (
+                <>
+                  {c.name}{" "}
+                  <span className="text-mut font-normal">
+                    - {c.source || ""} - loaded {fmtLoadedAt(c.loaded_at)} UTC
+                  </span>
+                </>
+              ) : ws ? (
+                <>
+                  No case loaded{" "}
+                  <span className="text-mut font-normal">
+                    - load the demo, a use case, the builder, or your own
+                    files
+                  </span>
+                </>
+              ) : (
+                "Loading workspace..."
+              )}
+            </div>
           </div>
-          <div className="text-[13.5px] font-medium mt-1 leading-snug">
-            {c ? (
-              <>
-                {c.name}{" "}
-                <span className="text-mut font-normal">
-                  - {c.source || ""} - loaded {fmtLoadedAt(c.loaded_at)} UTC
-                </span>
-              </>
-            ) : ws ? (
-              <>
-                No case loaded{" "}
-                <span className="text-mut font-normal">
-                  - load the demo, a use case, the builder, or your own
-                  files
-                </span>
-              </>
-            ) : (
-              "Loading workspace..."
-            )}
+
+          <div className="flex items-center gap-3 flex-wrap shrink-0">
+            <button
+              className={cellBtn}
+              onClick={() => {
+                setIntent("slate-ledger-target", "invoices");
+                goView("ledger");
+              }}
+              title="Open the LiveCube AR Ledger - it lists exactly these open invoices"
+            >
+              <div className={cellKLink}>Open invoices</div>
+              <div className="font-display text-[15px] font-semibold mt-0.5">
+                {ws ? ws.open_invoices ?? "-" : "-"}
+              </div>
+            </button>
+
+            <button
+              className={cellBtn}
+              onClick={() => {
+                setIntent("slate-ledger-target", "staged");
+                goView("ledger");
+              }}
+              title="Open Ledger & Staged Wires at the staged payments table"
+            >
+              <div className={cellKLink}>Payments staged</div>
+              <div className="font-display text-[15px] font-semibold mt-0.5">
+                {ws ? `${ws.staged_payments ?? 0} staged` : "-"}
+              </div>
+            </button>
+
+            <button
+              className={cellBtn}
+              onClick={() => {
+                // Vanilla toggleRunDiff(): land on Run, and the
+                // comparison expands in the shell under this
+                // strip; a second click collapses it.
+                toggleRunDiffPanel();
+                goView("run");
+              }}
+              title="Compare the latest run with the previous one"
+            >
+              <div className={cellKLink}>Latest run</div>
+              <div className="mt-0.5">
+                {lr ? (
+                  <>
+                    <span className="font-mono text-[12.5px] break-all">
+                      {lr.run_id}
+                    </span>{" "}
+                    <span className="text-mut text-[12px]">{lr.status || ""}</span>
+                  </>
+                ) : (
+                  <span className="font-display text-[15px] font-semibold">
+                    {c ? "Pending" : "-"}
+                  </span>
+                )}
+              </div>
+            </button>
+
+            <button
+              className={cellBtn}
+              onClick={() => {
+                setIntent("slate-jump-approvals", "1");
+                goView("run");
+              }}
+              title="Jump to the sign-off queue on Run Reconciliation"
+            >
+              <div className={cellKLink}>Approvals waiting</div>
+              <div className="font-display text-[15px] font-semibold mt-0.5">
+                {ws ? (staged ? "0 held" : String(ws.approvals_pending ?? 0)) : "-"}
+              </div>
+            </button>
           </div>
         </div>
 
-        <button
-          className={cellBtn}
-          onClick={() => goView("ledger")}
-          title="Open the LiveCube AR Ledger - it lists exactly these open invoices"
-        >
-          <div className={cellK}>Open invoices</div>
-          <div className="font-display text-[17px] font-semibold mt-0.5">
-            {ws ? ws.open_invoices ?? "-" : "-"}
-          </div>
-        </button>
-
-        <button
-          className={cellBtn}
-          onClick={() => goView("ledger")}
-          title="Open Ledger & Staged Wires at the staged payments table"
-        >
-          <div className={cellK}>Payments staged</div>
-          <div className="font-display text-[17px] font-semibold mt-0.5">
-            {ws ? `${ws.staged_payments ?? 0} staged` : "-"}
-          </div>
-        </button>
-
-        <button
-          className={cellBtn}
-          onClick={() => goView("run")}
-          title="Open Run Reconciliation - the latest run in full"
-        >
-          <div className={cellK}>Latest run</div>
-          <div className="mt-0.5">
-            {lr ? (
-              <>
-                <span className="font-mono text-[12.5px] break-all">
-                  {lr.run_id}
-                </span>{" "}
-                <span className="text-mut text-[12px]">{lr.status || ""}</span>
-              </>
-            ) : (
-              <span className="font-display text-[17px] font-semibold">
-                {c ? "Pending" : "-"}
-              </span>
+        <div className="flex flex-col lg:flex-row lg:items-end gap-x-4 gap-y-2">
+          <div className="flex-1 min-w-0">
+            {c && verdict && (
+              <div aria-label="Case brief">
+                <span className="text-[13px] leading-snug">
+                  <b>{verdict}</b>
+                </span>
+              </div>
             )}
           </div>
-        </button>
 
-        <button
-          className={cellBtn}
-          onClick={() => goView("run")}
-          title="Jump to the sign-off queue on Run Reconciliation"
-        >
-          <div className={cellK}>Approvals waiting</div>
-          <div className="font-display text-[17px] font-semibold mt-0.5">
-            {ws ? (staged ? "0 held" : String(ws.approvals_pending ?? 0)) : "-"}
-          </div>
-        </button>
-
-        <div className="flex items-center gap-2 flex-wrap ml-auto">
-          <label className="flex items-center gap-2 text-mut font-mono text-[10px] tracking-[0.08em]">
-            TENANT
+          <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
+            <label className="flex items-center gap-2 text-mut text-[10px] tracking-[0.08em]">
+              <select
+                className={selectCls + " w-full lg:w-[264px]"}
+                aria-label="Tenant"
+                value={tenantVal}
+                disabled={tenants ? !tenants.switching_enabled : false}
+                title={
+                  tenants && !tenants.switching_enabled
+                    ? "Tenant switching is off when API keys are issued - the key decides the tenant"
+                    : "Tenant - every tenant has its own database; nothing crosses"
+                }
+                onChange={(e) => switchTenant(e.target.value)}
+              >
+                {(tenants?.tenants || []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} - {t.erp}
+                  </option>
+                ))}
+                {!tenants && <option value="demo">Demo workspace - US - SAP S/4HANA</option>}
+              </select>
+            </label>
             <select
-              className={selectCls}
-              value={tenantVal}
-              disabled={tenants ? !tenants.switching_enabled : false}
-              title={
-                tenants && !tenants.switching_enabled
-                  ? "Tenant switching is off when API keys are issued - the key decides the tenant"
-                  : "Tenant - every tenant has its own database; nothing crosses"
+              className={selectCls + " w-full lg:w-[288px]"}
+              value={
+                c && (c.id === "seed" || (cases || []).some((s) => s.id === c.id))
+                  ? c.id
+                  : ""
               }
-              onChange={(e) => switchTenant(e.target.value)}
+              title={c ? c.name : "Switch the active case"}
+              onChange={(e) => switchCase(e.target.value)}
             >
-              {(tenants?.tenants || []).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} - {t.erp}
+              <option value="">Switch case...</option>
+              <option value="seed">Demo case - one realistic day of receipts</option>
+              {(cases || []).map((s) => (
+                <option key={s.id} value={s.id} title={s.title}>
+                  {s.title}
                 </option>
               ))}
-              {!tenants && <option value="demo">Demo workspace - US - SAP S/4HANA</option>}
+              <option value="__builder">Custom Case Builder (Use Cases page)</option>
+              <option value="__upload">Upload my own files</option>
             </select>
-          </label>
-          <select
-            className={selectCls}
-            value={
-              c && (c.id === "seed" || (cases || []).some((s) => s.id === c.id))
-                ? c.id
-                : ""
-            }
-            title={c ? c.name : "Switch the active case"}
-            onChange={(e) => switchCase(e.target.value)}
-          >
-            <option value="">Switch case...</option>
-            <option value="seed">Demo case - one realistic day of receipts</option>
-            {(cases || []).map((s) => (
-              <option key={s.id} value={s.id} title={s.title}>
-                {s.title}
-              </option>
-            ))}
-            <option value="__builder">Custom Case Builder (Use Cases page)</option>
-            <option value="__upload">Upload my own files</option>
-          </select>
-          <button
-            className={ghostBtn}
-            disabled={!lr}
-            title={
-              lr
-                ? "Download the month-end bundle as a clean PDF: the latest run, its matches and exceptions, the SAP posting documents, and the fingerprinted audit trail"
-                : "Nothing to export yet - this workspace has no run"
-            }
-            onClick={() =>
-              doExport("/api/v1/export/bundle.pdf", "slatematch-audit-bundle.pdf")
-            }
-          >
-            Export audit &amp; SAP bundle
-          </button>
-          <span className="relative" ref={menuRef}>
-            <button className={ghostBtn} onClick={() => setMenuOpen((o) => !o)}>
-              More ▾
+            <button
+              className={ghostBtn}
+              disabled={!lr}
+              title={
+                lr
+                  ? "Download the month-end bundle as a clean PDF: the latest run, its matches and exceptions, the SAP posting documents, and the fingerprinted audit trail"
+                  : "Nothing to export yet - this workspace has no run"
+              }
+              onClick={() =>
+                doExport("/api/v1/export/bundle.pdf", "slatematch-audit-bundle.pdf")
+              }
+            >
+              Export audit &amp; SAP bundle
             </button>
-            {menuOpen && (
-              <span className="absolute right-0 top-[calc(100%+6px)] z-40 flex flex-col gap-1 glass-panel border border-white/[0.11] rounded-md p-2 min-w-[210px]">
-                <button
-                  className={ghostBtn + " text-left border-0"}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    goView("cases");
-                  }}
-                >
-                  Use cases
-                </button>
-                <button
-                  className={ghostBtn + " text-left border-0"}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    doExport("/api/v1/export/bundle", "slatematch-audit-bundle.json");
-                  }}
-                >
-                  Bundle JSON (raw data)
-                </button>
-                <button
-                  className={ghostBtn + " text-left border-0"}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    doExport("/api/v1/export/matches.csv", "slatematch-matches.csv");
-                  }}
-                >
-                  Matches CSV
-                </button>
-                <button
-                  className={ghostBtn + " text-left border-0"}
-                  title="Snapshot this workspace under a session ID - restore it exactly, from the Dashboard, on any visit"
-                  onClick={saveSession}
-                >
-                  Save this session
-                </button>
-                <button
-                  className={ghostBtn + " text-left border-0"}
-                  onClick={resetWorkspace}
-                >
-                  Reset to empty
-                </button>
-              </span>
-            )}
-          </span>
+            <div ref={menuWrapRef}>
+              <button
+                className={ghostBtn}
+                ref={menuBtnRef}
+                onClick={toggleMenu}
+                aria-expanded={menuOpen}
+              >
+                More ▾
+              </button>
+              {menuOpen &&
+                createPortal(
+                  <div
+                    ref={menuElRef}
+                    className="glass-pop fixed z-[62] flex flex-col gap-1 border border-white/[0.11] rounded-md p-2"
+                    style={{
+                      left: menuPos?.left ?? 0,
+                      top: menuPos?.top ?? 0,
+                      width: 216,
+                    }}
+                  >
+                    <button
+                      className={ghostBtn + " text-left border-0"}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        goView("cases");
+                      }}
+                    >
+                      Use cases
+                    </button>
+                    <button
+                      className={ghostBtn + " text-left border-0"}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        doExport("/api/v1/export/bundle", "slatematch-audit-bundle.json");
+                      }}
+                    >
+                      Bundle JSON (raw data)
+                    </button>
+                    <button
+                      className={ghostBtn + " text-left border-0"}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        doExport("/api/v1/export/matches.csv", "slatematch-matches.csv");
+                      }}
+                    >
+                      Matches CSV
+                    </button>
+                    <button
+                      className={ghostBtn + " text-left border-0"}
+                      title="Snapshot this workspace under a session ID - restore it exactly, from the Dashboard, on any visit"
+                      onClick={saveSession}
+                    >
+                      Save this session
+                    </button>
+                    <button
+                      className={ghostBtn + " text-left border-0"}
+                      onClick={resetWorkspace}
+                    >
+                      Reset to empty
+                    </button>
+                  </div>,
+                  document.body
+                )}
+            </div>
+          </div>
         </div>
       </div>
-
-      {c && verdict && (
-        <div
-          className="glass-card rounded-md border border-white/[0.11] px-4 py-2.5"
-          aria-label="Case brief"
-        >
-          <span className="text-[13.5px]">
-            <b>{verdict}</b>
-          </span>
-        </div>
-      )}
     </div>
   );
 }

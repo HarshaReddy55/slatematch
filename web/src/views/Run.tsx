@@ -4,12 +4,14 @@ import {
   AGENT_ALGORITHMS,
   AGENT_SHORT,
   agentCountLine,
+  flashTarget,
   goView,
   invariantGrade,
   outcomeShare,
   runChartGeometry,
   setIntent,
   takeIntent,
+  toggleRunDiffPanel,
   CHART_COLS,
   CHART_LABELS,
   type AgentRecord,
@@ -26,7 +28,8 @@ import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
 import SlideOver from "../ui/SlideOver";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
+import ViewHead, { LoadError } from "../ui/ViewHead";
 import { RefreshFade, Reveal, Rise } from "../ui/motion";
 import { GhostBtn, JsonBox, PrimaryBtn, StagedTable } from "../ui/Stage3";
 import Approvals from "./Approvals";
@@ -106,6 +109,19 @@ export default function Run() {
   const t0 = useRef(0);
   const logRef = useRef<HTMLDivElement>(null);
   const intentDone = useRef(false);
+  /* Stage 5 restorations: viewing a stored run (Dashboard history),
+     the exceptions filter (Dashboard exceptions card) and the
+     approvals jump (casebar Approvals cell, palette). The run
+     comparison is NOT here: Stage 5D moved it back to the shell
+     under the casebar (vanilla's #run-diff position); this view's
+     Compare runs button toggles that one panel. */
+  const [viewRid, setViewRid] = useState<string | null>(null);
+  const viewRidRef = useRef<string | null>(null);
+  const [excFilter, setExcFilter] = useState(false);
+  const storedDone = useRef(false);
+  const filterDone = useRef(false);
+  const jumpDone = useRef(false);
+  const hlAttempts = useRef(0);
 
   const load = useCallback(async () => {
     setError("");
@@ -115,7 +131,7 @@ export default function Run() {
       let exceptions: RunException[] = [];
       let agents: AgentRecord[] = [];
       let brief: BriefData | null = null;
-      const rid = ws.latest_run?.run_id;
+      const rid = viewRidRef.current || ws.latest_run?.run_id;
       if (rid) {
         const [m, x, ag] = await Promise.all([
           api<StoredMatch[]>(`/api/v1/runs/${rid}/matches`),
@@ -438,6 +454,10 @@ export default function Run() {
     setLiveStages(null);
     setRunning(false);
     runBusy.current = false;
+    // A fresh run becomes the viewed run (vanilla lands on it too).
+    viewRidRef.current = null;
+    setViewRid(null);
+    setExcFilter(false);
     await load();
     setApprReload((n) => n + 1);
     setDeskReload((n) => n + 1);
@@ -499,6 +519,9 @@ export default function Run() {
       setLiveStages(null);
       setRunning(false);
       runBusy.current = false;
+      viewRidRef.current = null;
+      setViewRid(null);
+      setExcFilter(false);
       await load();
       setApprReload((n) => n + 1);
       setDeskReload((n) => n + 1);
@@ -514,6 +537,114 @@ export default function Run() {
     }
   }, [data, runLive]);
 
+  // Cross-view intent: openRun() - the Dashboard history row's run.
+  useEffect(() => {
+    if (!data || storedDone.current) return;
+    const rid = takeIntent("slate-open-run");
+    if (rid) {
+      storedDone.current = true;
+      viewRidRef.current = rid;
+      setViewRid(rid);
+      load();
+    }
+  }, [data, load]);
+
+  // Cross-view intent: openRunExceptions() - the Dashboard card.
+  useEffect(() => {
+    if (!data || filterDone.current) return;
+    if (takeIntent("slate-run-filter") === "exceptions") {
+      filterDone.current = true;
+      setExcFilter(true);
+    }
+  }, [data]);
+
+  // Cross-view intent: gotoRunStaged()'s row highlight - after the
+  // Upload handoff's run lands, wash the just-staged payments' rows.
+  // The intent is read once and held until the rows exist (the run
+  // it triggers replaces the data first).
+  const hlIds = useRef<string[] | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    if (hlIds.current === null && hlAttempts.current === 0) {
+      const raw = takeIntent("slate-hl-rows");
+      if (raw) hlIds.current = raw.split(",").filter(Boolean);
+    }
+    const ids = hlIds.current;
+    if (!ids || !ids.length) return;
+    hlAttempts.current += 1;
+    const found = ids
+      .map((id) => document.getElementById(`match-row-${id}`))
+      .filter((el): el is HTMLElement => !!el);
+    if (found.length) {
+      // Vanilla adds the wash and leaves it (its CSS transition
+      // settles the colour); the class stays on the rows.
+      found.forEach((el) => el.classList.add("hl-row"));
+      found[0].scrollIntoView({ behavior: "smooth", block: "nearest" });
+      hlIds.current = null;
+    } else if (hlAttempts.current > 6) {
+      hlIds.current = null;
+    }
+  }, [data]);
+
+  // Cross-view intent: jumpToApprovals() - scroll to the queue and
+  // flash it; on a staged case, flash the live run button instead.
+  useEffect(() => {
+    if (!data || jumpDone.current) return;
+    if (takeIntent("slate-jump-approvals")) {
+      jumpDone.current = true;
+      const stagedNow = data.ws.run_status === "staged";
+      setTimeout(() => {
+        flashTarget(
+          document.getElementById(
+            stagedNow ? "run-live-btn" : "approvals-queue"
+          )
+        );
+      }, 400);
+    }
+  }, [data]);
+
+  // Shell intents can also arrive while this view is already active
+  // (the casebar and the palette live in the shell; clicking them
+  // does not remount the view or reload its data, so the effects
+  // above never re-fire). Poll for late intents and honour them the
+  // same way; takeIntent has already removed any the effects above
+  // consumed, so nothing fires twice.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  useEffect(() => {
+    const t = setInterval(() => {
+      const d = dataRef.current;
+      if (!d) return;
+      if (sessionStorage.getItem("slate-jump-approvals")) {
+        takeIntent("slate-jump-approvals");
+        const stagedNow = d.ws.run_status === "staged";
+        setTimeout(() => {
+          flashTarget(
+            document.getElementById(
+              stagedNow ? "run-live-btn" : "approvals-queue"
+            )
+          );
+        }, 350);
+      }
+      const rid = sessionStorage.getItem("slate-open-run");
+      if (rid) {
+        takeIntent("slate-open-run");
+        viewRidRef.current = rid;
+        setViewRid(rid);
+        load();
+      }
+      if (sessionStorage.getItem("slate-run-filter") === "exceptions") {
+        takeIntent("slate-run-filter");
+        setExcFilter(true);
+      }
+      if (sessionStorage.getItem("slate-run-live") === "1") {
+        takeIntent("slate-run-live");
+        runLive();
+      }
+    }, 600);
+    return () => clearInterval(t);
+  }, [load, runLive]);
+
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -523,6 +654,26 @@ export default function Run() {
   const pending = ws?.pending_payments || [];
   const staged = ws?.staged_payments || 0;
   const latestRun = ws?.latest_run;
+  /* The run this page is showing: the latest, or a stored run opened
+     from the Dashboard history. */
+  const shownRunId = viewRid || latestRun?.run_id || null;
+  const storedMode = !!(
+    viewRid &&
+    latestRun &&
+    viewRid !== latestRun.run_id
+  );
+  /* openRunExceptions()'s filter: exception rows plus the matches
+     whose deduction the agent turned into a dispute claim. */
+  const excPids = new Set((data?.exceptions || []).map((e) => e.payment_id));
+  const shownMatches =
+    excFilter && data
+      ? data.matches.filter(
+          (m) =>
+            excPids.has(m.payment_id) ||
+            m.result?.deduction?.autonomous_action ===
+              "AUTO_GENERATE_DISPUTE_CLAIM"
+        )
+      : data?.matches || [];
 
   const mutateFirstWire = async () => {
     if (runBusy.current) return;
@@ -621,7 +772,7 @@ export default function Run() {
         purpose="Running settles these payments against the active ledger. Dashboard, Ledger, approvals and forecast update from the same run."
         onRefresh={load}
       />
-      {!data && !error && <Loading label="LOADING THE RUN..." />}
+      {!data && !error && <ViewSkeleton kind="run" />}
       {error && <LoadError error={error} />}
 
       {data && (
@@ -629,14 +780,53 @@ export default function Run() {
           {/* ---------- run summary card (Jeet packaging) ---------- */}
           <Rise i={0}>
             <Panel title="Run record">
-              {latestRun ? (
+              {shownRunId ? (
                 <>
-                  <p className="text-[13px] m-0 mt-1">
-                    Run <b className="font-mono">{latestRun.run_id}</b> -{" "}
-                    {data.matches.length} matches, {data.exceptions.length}{" "}
-                    exceptions. Select a match for its evidence.
-                  </p>
-                  {chart && (
+                  {excFilter ? (
+                    <div className="flex items-center gap-3 flex-wrap mt-1">
+                      <p className="text-[13px] m-0">
+                        Filtered: exception and disputed rows of run{" "}
+                        <b className="font-mono">{shownRunId}</b> -{" "}
+                        {shownMatches.length} of {data.matches.length} matches
+                        shown, {data.exceptions.length} exceptions below.
+                      </p>
+                      <GhostBtn onClick={() => setExcFilter(false)}>
+                        Clear filter
+                      </GhostBtn>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-[13px] m-0 mt-1">
+                        Run <b className="font-mono">{shownRunId}</b> -{" "}
+                        {data.matches.length} matches, {data.exceptions.length}{" "}
+                        exceptions. Select a match for its evidence.
+                      </p>
+                      <div className="flex gap-2 items-center flex-wrap mt-2">
+                        <GhostBtn onClick={() => toggleRunDiffPanel()}>
+                          Compare runs
+                        </GhostBtn>
+                        {storedMode && (
+                          <>
+                            <span className="text-[12px] text-mut">
+                              You are viewing a stored run from the Dashboard
+                              history; the workspace's live state is
+                              unchanged.
+                            </span>
+                            <GhostBtn
+                              onClick={() => {
+                                viewRidRef.current = null;
+                                setViewRid(null);
+                                load();
+                              }}
+                            >
+                              Back to latest run
+                            </GhostBtn>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  {chart && !excFilter && (
                     <div className="mt-3">
                       <svg
                         viewBox={`0 0 ${chart.W} ${chart.H}`}
@@ -972,7 +1162,7 @@ export default function Run() {
                 </>
               )}
               <div className="flex gap-2 flex-wrap mt-3.5">
-                <PrimaryBtn onClick={runLive} disabled={running}>
+                <PrimaryBtn id="run-live-btn" onClick={runLive} disabled={running}>
                   {running ? "Solving MILP & matching payments..." : "Run the active case live"}
                 </PrimaryBtn>
                 <GhostBtn onClick={runBatch} disabled={running}>
@@ -1154,9 +1344,9 @@ export default function Run() {
           )}
 
           {/* ---------- brief ---------- */}
-          {data.brief && latestRun && (
+          {data.brief && shownRunId && (
             <Rise i={4}>
-              <Panel title={`Agent brief - run ${latestRun.run_id}`}>
+              <Panel title={`Agent brief - run ${shownRunId}`}>
                 <div className="text-[13px] leading-relaxed mt-1">
                   <b>{data.brief.headline}</b>
                   {(data.brief.body || []).map((x, i) => (
@@ -1175,19 +1365,29 @@ export default function Run() {
                         : "Composed from run records - grounded template"}
                     </Pill>
                   </div>
+                  <div className="mt-3 flex items-center gap-2.5 flex-wrap">
+                    <GhostBtn onClick={() => goView("sap")}>
+                      View SAP S/4HANA BAPI &amp; EBRR Payloads →
+                    </GhostBtn>
+                    <span className="text-[12px] text-mut">
+                      Every cleared payment's balanced DZ clearing journal
+                      and the ASC 606 dispute reserve, generated live by
+                      erp_sap.py from this case's matches.
+                    </span>
+                  </div>
                 </div>
               </Panel>
             </Rise>
           )}
 
           {/* ---------- matches + exceptions ---------- */}
-          {latestRun && (
+          {shownRunId && (
             <Rise i={5}>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
                 <Panel title="Matches">
-                  {data.matches.length ? (
+                  {shownMatches.length ? (
                     <RefreshFade
-                      signature={data.matches
+                      signature={shownMatches
                         .map((m) => m.payment_id + m.status)
                         .join(",")}
                     >
@@ -1204,7 +1404,7 @@ export default function Run() {
                           </>
                         }
                       >
-                        {data.matches.map((m) => {
+                        {shownMatches.map((m) => {
                           const alloc = (m.result?.lines || []).reduce(
                             (a, l) => a + l.net_cents,
                             0
@@ -1212,7 +1412,7 @@ export default function Run() {
                           const share = outcomeShare(alloc, m.residual_cents);
                           const cls = m.status === "AUTO_POSTED" ? 0 : m.status === "PROPOSED" ? 1 : 2;
                           return (
-                            <Row key={m.payment_id}>
+                            <Row key={m.payment_id} id={`match-row-${m.payment_id}`}>
                               <Td>
                                 <button
                                   className="bg-transparent border-0 p-0 font-sans text-[13px] text-blue2 cursor-pointer hover:underline"
@@ -1305,6 +1505,7 @@ export default function Run() {
                               )}
                               <GhostBtn
                                 onClick={() => {
+                                  setIntent("slate-mail-cat", "chases");
                                   setIntent("slate-mail-focus", e.payment_id);
                                   goView("mail");
                                 }}
@@ -1331,17 +1532,19 @@ export default function Run() {
 
           {/* ---------- approvals ---------- */}
           <Rise i={6}>
-            <Approvals
-              reloadSignal={apprReload}
-              onEvidence={openEvidence}
-              onDecided={() => {
-                load();
-              }}
-            />
+            <div id="approvals-queue">
+              <Approvals
+                reloadSignal={apprReload}
+                onEvidence={openEvidence}
+                onDecided={() => {
+                  load();
+                }}
+              />
+            </div>
           </Rise>
 
           {/* ---------- dispute desk ---------- */}
-          {latestRun && (
+          {shownRunId && (
             <Rise i={7}>
               <Desk
                 matches={data.matches}

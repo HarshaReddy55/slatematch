@@ -10,6 +10,7 @@ import {
   setIntent,
   takeIntent,
   type DraftResult,
+  type DunningItem,
   type MailHub,
   type OutboxMail,
 } from "../lib/operate";
@@ -17,7 +18,8 @@ import { ErpServerDoc } from "./MatchDetail";
 import type { ErpPaymentDocument } from "../lib/operate";
 import Panel from "../ui/Panel";
 import Pill, { type PillKind } from "../ui/Pill";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { EASE_OUT, RefreshFade, Rise } from "../ui/motion";
 import { GhostBtn, StagedGate } from "../ui/Stage3";
 import type { WorkspaceOperate } from "../lib/operate";
@@ -108,15 +110,39 @@ export default function Mail() {
         setWs(w);
         if (!focusDone.current) {
           focusDone.current = true;
+          /* goMailFor(cat, ref): land on the named category with the
+             named item selected. Callers: the Run exceptions chase,
+             the Forecast dispute Dispatch, the Dashboard recovery
+             figure, the Desk. A bare focus with no category keeps
+             the original chase behaviour, then tries the rest. */
           const focus = takeIntent("slate-mail-focus");
-          if (focus) {
-            const ix = (h.chases || []).findIndex(
-              (d) => d.payment_id === focus
-            );
-            if (ix >= 0) {
-              setCat("chases");
-              setSel((s) => ({ ...s, chases: ix }));
-            } else setCat("chases");
+          const namedCat = takeIntent("slate-mail-cat") as Cat | null;
+          if (focus || namedCat) {
+            const keyOf = (c: Cat, d: unknown): string =>
+              c === "dunning"
+                ? (d as DunningItem).invoice_id
+                : (d as { payment_id: string }).payment_id;
+            const cats: Cat[] =
+              namedCat && namedCat !== "outbox"
+                ? [namedCat]
+                : ["chases", "disputes", "settlements", "dunning"];
+            let landed = false;
+            if (focus) {
+              for (const c of cats) {
+                const ix = ((h[c] || []) as unknown[]).findIndex(
+                  (d) => keyOf(c, d) === focus
+                );
+                if (ix >= 0) {
+                  setCat(c);
+                  setSel((s) => ({ ...s, [c]: ix }));
+                  landed = true;
+                  break;
+                }
+              }
+            }
+            if (!landed && namedCat && namedCat !== "outbox")
+              setCat(namedCat);
+            else if (!landed && !namedCat && focus) setCat("chases");
           }
         }
       })
@@ -351,7 +377,7 @@ export default function Mail() {
         purpose="Every stream the run generates: claims, inquiries, confirmations and reminders, with the outbox recording each send's true status."
         onRefresh={load}
       />
-      {!hub && !error && <Loading label="LOADING THE MAIL HUB..." />}
+      {!hub && !error && <ViewSkeleton kind="panels" />}
       {error && <LoadError error={error} />}
 
       {hub && (
@@ -412,7 +438,7 @@ export default function Mail() {
                     onClick={() => { setCat(k); setMailNote(null); }}
                   >
                     {label}
-                    <span className="font-mono text-[11px] ml-1.5 opacity-80">
+                    <span className="font-mono text-[11px] ml-1.5">
                       {counts[k]}
                     </span>
                   </button>
@@ -597,13 +623,13 @@ export default function Mail() {
                           ) : (
                             <>
                               <input
-                                className="w-full box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 bg-transparent text-ink"
+                                className="w-full box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
                                 placeholder="ap@customer.com"
                                 value={preview.to}
                                 onChange={(e) => setPreview((p) => ({ ...p, to: e.target.value }))}
                               />
                               <textarea
-                                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 bg-black/25 text-ink mt-2"
+                                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2"
                                 rows={10}
                                 value={preview.text}
                                 onChange={(e) => setPreview((p) => ({ ...p, text: e.target.value }))}

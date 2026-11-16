@@ -16,6 +16,8 @@ export default function StatCard({
   delta,
   deltaGood,
   deltaText,
+  onClick,
+  title,
 }: {
   label: string;
   value: number | null;
@@ -26,10 +28,18 @@ export default function StatCard({
   delta?: number | null;
   deltaGood?: boolean;
   deltaText?: string;
+  /** Stage 5: a card that drills to its underlying records. */
+  onClick?: () => void;
+  title?: string;
 }) {
   const rolled = useRollUp(value ?? 0, format);
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-4 flex flex-col gap-1 min-w-0">
+    <div
+      className={`glass-card rounded-md border border-white/[0.11] p-4 flex flex-col gap-1 min-w-0 ${onClick ? "cursor-pointer" : ""}`}
+      onClick={onClick}
+      title={title}
+      role={onClick ? "button" : undefined}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
           {label}

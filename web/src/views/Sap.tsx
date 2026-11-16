@@ -10,7 +10,8 @@ import Panel from "../ui/Panel";
 import StatCard from "../ui/StatCard";
 import Pill from "../ui/Pill";
 import SlideOver from "../ui/SlideOver";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { Rise } from "../ui/motion";
 import { GhostBtn, GlTable, JsonBox, StagedGate } from "../ui/Stage3";
 
@@ -67,7 +68,7 @@ export default function Sap() {
         purpose="The posting documents the ERP would receive for the latest run: balanced DZ journals per cleared payment, and the ASC 606 dispute reserve."
         onRefresh={load}
       />
-      {!docs && !error && <Loading label="LOADING THE POSTING DOCUMENTS..." />}
+      {!docs && !error && <ViewSkeleton kind="table" />}
       {error && <LoadError error={error} />}
 
       {docs && staged && ws && (

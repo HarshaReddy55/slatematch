@@ -137,7 +137,7 @@ export default function SessionsPanel({
             placeholder="Enter session ID - e.g. SM-7K2QX-9M4TD"
             autoComplete="off"
             spellCheck={false}
-            className="flex-1 min-w-[240px] bg-bg2 border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink font-mono"
+            className="flex-1 min-w-[240px] glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink font-mono"
           />
           <button className={btnGhost} onClick={() => restore()} disabled={!!busy}>
             {busy === "restore" ? "Restoring session..." : "Retrieve session"}

@@ -9,7 +9,8 @@ import {
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { Reveal, Rise } from "../ui/motion";
 import { GhostBtn, PrimaryBtn } from "../ui/Stage3";
 
@@ -155,7 +156,7 @@ export default function Cases() {
   };
 
   const inputCls =
-    "font-sans text-[13px] px-2.5 py-1.5 rounded-[3px] border border-line2 bg-transparent text-ink w-full box-border";
+    "font-sans text-[13px] px-2.5 py-1.5 rounded-[3px] border border-line2 glass-input text-ink w-full box-border";
 
   return (
     <>
@@ -165,7 +166,7 @@ export default function Cases() {
         purpose="Authored scenarios with stated outcomes. Stage one to inspect it, or run it and read the graded verdict."
         onRefresh={load}
       />
-      {!list && !error && <Loading label="LOADING THE USE CASES..." />}
+      {!list && !error && <ViewSkeleton kind="panels" />}
       {error && <LoadError error={error} />}
       {note && (
         <p className="text-[13px] m-0 border border-blue/40 bg-[rgba(61,117,232,0.10)] rounded-md px-3 py-2">

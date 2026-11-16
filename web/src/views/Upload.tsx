@@ -16,7 +16,8 @@ import type { Invoice } from "../lib/insight";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { Rise } from "../ui/motion";
 import { GhostBtn, PrimaryBtn, StagedTable } from "../ui/Stage3";
 
@@ -514,7 +515,7 @@ export default function Upload() {
   const settledCount = (ws?.staged_payments || 0) - pending.length;
 
   const taCls =
-    "w-full box-border font-mono text-[12.5px] leading-relaxed px-3 py-2.5 rounded-[3px] border border-line2 bg-black/25 text-ink mt-3";
+    "w-full box-border font-mono text-[12.5px] leading-relaxed px-3 py-2.5 rounded-[3px] border border-line2 glass-input text-ink mt-3";
 
   return (
     <>
@@ -524,8 +525,37 @@ export default function Upload() {
         purpose="Bring your own ledger and wires. Every import is fingerprinted, mapped and quarantined row by row - nothing is silently dropped."
         onRefresh={loadWs}
       />
-      {!ws && !error && <Loading label="LOADING THE UPLOAD CENTER..." />}
+      {!ws && !error && <ViewSkeleton kind="panels" />}
       {error && <LoadError error={error} />}
+
+      {/* showHandoff() (assist.js): while payments wait, the way
+          forward is one click, at the top of this view. */}
+      {pending.length > 0 && (
+        <Rise i={0}>
+          <div className="glass-card rounded-md border border-blue/50 px-4 py-3 flex items-center gap-3 flex-wrap">
+            <span className="text-[13.5px]">
+              ✓ <b>{pending.length} payments staged ({money(pending.reduce((a, p) => a + p.amount_cents, 0))})</b>{" "}
+              - ready to reconcile.
+            </span>
+            <PrimaryBtn
+              onClick={() => {
+                setIntent(
+                  "slate-hl-rows",
+                  pending.map((p) => p.payment_id).join(",")
+                );
+                setIntent("slate-run-live", "1");
+                goView("run");
+              }}
+            >
+              Execute reconciliation →
+            </PrimaryBtn>
+            <span className="text-[12px] text-mut">
+              The staged payments are highlighted at the top of the Run
+              page.
+            </span>
+          </div>
+        </Rise>
+      )}
 
       {queue.length > 0 && (
         <Rise i={0}>

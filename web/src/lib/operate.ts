@@ -33,6 +33,29 @@ export function takeIntent(key: string): string | null {
   }
 }
 
+/** Stage 5D: the run comparison is shell state again, as in
+    vanilla - toggleRunDiff() expands #run-diff in the shell,
+    directly under the casebar, on top of whichever view is
+    showing. A one-shot sessionStorage intent cannot express a
+    toggle (open AND close through the same cell), so the casebar
+    cell and the Run view's Compare runs button signal the shell
+    with an event and App flips the panel. This replaces the
+    Stage 5 slate-run-diff intent, which the Run view consumed to
+    open a second copy of the panel inside the Run view. */
+export function toggleRunDiffPanel() {
+  window.dispatchEvent(new CustomEvent("slate:toggle-run-diff"));
+}
+
+/** Vanilla's scroll + flash for cross-view jumps (gotoLedgerInvoices,
+    jumpToApprovals): land on the element the click was about and
+    ring it once with the kit's one-shot flash. */
+export function flashTarget(el: HTMLElement | null) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  el.classList.add("flash-target");
+  window.setTimeout(() => el.classList.remove("flash-target"), 1750);
+}
+
 /* ---------------- workspace payments ---------------- */
 
 export interface PaymentFull {
@@ -172,7 +195,12 @@ export function runClassify(it: {
   return 2;
 }
 
-export const CHART_COLS = ["#34bf71", "#f2c14e", "#e5484d"];
+/* Stage 5C: the series colours are the Stage 5C legibility-lifted
+   status tones (the React theme's ok / warn / bad), not the
+   original hexes - the chart legend renders its labels in these
+   colours as text, and the originals measured 2.64:1 and 4.34:1
+   on the panel tier in the dark-on-dark audit (STAGE5C.md). */
+export const CHART_COLS = ["#5eeaa0", "#f5cb5f", "#ff9ea0"];
 export const CHART_LABELS = [
   "Auto-posted",
   "Held for a person",

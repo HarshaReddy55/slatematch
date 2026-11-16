@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money, type MatchRecord } from "../lib/api";
 import {
   disputeClaims,
@@ -11,18 +11,32 @@ import {
   type WhatifResult,
   type WorkspaceFull,
 } from "../lib/insight";
+import {
+  goView,
+  sendMail,
+  sendStatusText,
+  setIntent,
+  type WorkspaceOperate,
+} from "../lib/operate";
 import Panel from "../ui/Panel";
+import Pill from "../ui/Pill";
 import StatCard from "../ui/StatCard";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
+import { GhostBtn, PrimaryBtn, StagedGate } from "../ui/Stage3";
 import { RefreshFade, Reveal, Rise } from "../ui/motion";
 
 /* Stage 2: Forecast and Collections, migrated. Endpoints, KPI rules,
    fan-chart geometry, drill, customers, collections and what-if all
    mirror loadForecast() / fcDrill() / fcWhatif() / renderFcDisputes()
-   in the vanilla insight.js and assist.js (lib/insight.ts). The
-   collections row's Draft reminder mail composer stays in the vanilla
-   app in this stage; every figure here is the vanilla figure. */
+   in the vanilla insight.js and assist.js (lib/insight.ts).
+   Stage 5: the Draft reminder flow is restored IN this view, as
+   vanilla has it - a per-row button on the collections queue, the
+   composer panel in the Forecast section (draftReminder() +
+   sendComposerMail(), kind collection_reminder, the true-status
+   pill), plus the dispute rows' Dispatch button and the staged
+   gate's Execute action. */
 
 interface FcData {
   f: ForecastData;
@@ -31,7 +45,20 @@ interface FcData {
   ws: WorkspaceFull;
 }
 
-export default function Forecast() {
+interface McState {
+  invoiceId: string;
+  to: string;
+  subject: string;
+  body: string;
+  status: string | null;
+  busy: boolean;
+}
+
+export default function Forecast({
+  toast,
+}: {
+  toast: (m: string) => void;
+}) {
   const [data, setData] = useState<FcData | null>(null);
   const [error, setError] = useState("");
   const [drill, setDrill] = useState<number | null>(null);
@@ -39,6 +66,75 @@ export default function Forecast() {
   const [wiShift, setWiShift] = useState(0);
   const [wi, setWi] = useState<WhatifResult | null>(null);
   const [wiError, setWiError] = useState("");
+  const [mc, setMc] = useState<McState | null>(null);
+  const mcRef = useRef<HTMLDivElement>(null);
+
+  /* draftReminder() (insight.js): the draft is composed by the
+     server from the ledger row itself, then reviewed and sent from
+     this view's own composer. */
+  const draftReminder = async (invoiceId: string) => {
+    try {
+      const d = await api<{ subject: string; body: string }>(
+        "/api/v1/mail/reminder",
+        {
+          method: "POST",
+          body: JSON.stringify({ invoice_id: invoiceId }),
+        }
+      );
+      setMc({
+        invoiceId,
+        to: "",
+        subject: d.subject || "",
+        body: d.body || "",
+        status: null,
+        busy: false,
+      });
+      setTimeout(
+        () =>
+          mcRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          }),
+        90
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /* sendComposerMail() -> sendMailGeneric("collection_reminder"). */
+  const sendReminder = async () => {
+    if (!mc) return;
+    if (!mc.to.trim()) {
+      toast("Add the recipient's email first");
+      return;
+    }
+    if (!mc.body.trim()) {
+      toast("Draft the message first");
+      return;
+    }
+    setMc({ ...mc, busy: true });
+    try {
+      const r = await sendMail(
+        "collection_reminder",
+        mc.invoiceId,
+        mc.to,
+        mc.body,
+        mc.subject
+      );
+      setMc((cur) => cur && { ...cur, busy: false, status: r.status });
+      toast(
+        r.status === "sent"
+          ? "Mail sent"
+          : r.status === "failed"
+            ? "Send failed - recorded in the Outbox"
+            : "Recorded in the Outbox - no mailbox configured, nothing was sent"
+      );
+    } catch (e) {
+      setMc((cur) => cur && { ...cur, busy: false });
+      toast(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const load = useCallback(() => {
     setError("");
@@ -97,7 +193,7 @@ export default function Forecast() {
         purpose="Expected cash timing and collections priority from the post-reconciliation ledger."
         onRefresh={load}
       />
-      {!data && !error && <Loading label="LOADING THE FORECAST..." />}
+      {!data && !error && <ViewSkeleton kind="chart" />}
       {error && <LoadError error={error} />}
 
       {data && (
@@ -146,17 +242,14 @@ export default function Forecast() {
       )}
       {data && f?.state === "loaded_not_run" && data.ws.case && (
         <Rise i={1}>
-        <Panel title="Waiting for the reconciliation run">
-          <p className="text-sm text-mut mt-1 mb-0">
-            The forecast for <b className="text-ink">{data.ws.case.name}</b>{" "}
-            is generated by the run itself, nothing here is pre-computed. The
-            case is staged: {data.ws.open_invoices} open invoices (
-            {money(data.ws.open_invoice_total_cents || 0)}) and{" "}
-            {data.ws.staged_payments} wires (
-            {money(data.ws.staged_payment_total_cents || 0)}) are waiting. Run
-            the case from Run Reconciliation, then refresh here.
-          </p>
-        </Panel>
+          <StagedGate
+            where="forecast"
+            ws={data.ws as unknown as WorkspaceOperate}
+            onExecute={() => {
+              setIntent("slate-run-live", "1");
+              goView("run");
+            }}
+          />
         </Rise>
       )}
 
@@ -175,6 +268,17 @@ export default function Forecast() {
           <Rise i={1}>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
             <Panel title="Cash-in forecast - next 8 weeks">
+              <div className="flex gap-4 flex-wrap mt-2 text-[12px] text-mut">
+                <span>
+                  <span className="inline-block w-2.5 h-2.5 rounded-[2px] mr-1.5 bg-blue opacity-40" />
+                  Shaded band: P10 to P90 range for the week
+                </span>
+                <span>
+                  <span className="inline-block w-2.5 h-2.5 rounded-[2px] mr-1.5 bg-[#7fa6f2]" />
+                  Line and dots: P50, the expected week
+                </span>
+                <span>Height is cash expected that week</span>
+              </div>
               <svg
                 viewBox="0 0 640 220"
                 className="w-full mt-2"
@@ -338,13 +442,14 @@ export default function Forecast() {
                       <Th>Overdue</Th>
                       <Th>Pred. delay</Th>
                       <Th>Priority</Th>
+                      <Th>{""}</Th>
                     </>
                   }
                 >
                   {data.c.map((r) => (
                     <Row key={r.invoice_id}>
                       <Td className="font-mono text-[12px] whitespace-nowrap">{r.invoice_id}</Td>
-                      <Td className="whitespace-nowrap">{r.customer}</Td>
+                      <Td>{r.customer}</Td>
                       <Td className="font-mono text-[12px]">
                         {money(r.gross_cents)}
                       </Td>
@@ -352,6 +457,14 @@ export default function Forecast() {
                       <Td>{r.predicted_delay_days}d</Td>
                       <Td>
                         <b>{r.priority_score}</b>
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        <button
+                          className="inline-flex items-center font-sans text-[12px] font-medium px-2 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer pressable"
+                          onClick={() => draftReminder(r.invoice_id)}
+                        >
+                          Draft reminder
+                        </button>
                       </Td>
                     </Row>
                   ))}
@@ -371,7 +484,7 @@ export default function Forecast() {
                     setWiCust(e.target.value);
                     runWhatif(e.target.value, wiShift);
                   }}
-                  className="block mt-1 bg-bg2 border border-line rounded-[3px] px-2 py-2 text-[13px] text-ink"
+                  className="block mt-1 glass-select border border-line rounded-[3px] px-2 py-2 text-[13px] text-ink"
                 >
                   {(f.customers || []).map((r) => (
                     <option key={r.customer} value={r.customer}>
@@ -465,11 +578,67 @@ export default function Forecast() {
           </div>
           </Rise>
 
+          {mc && (
+            <Rise i={2}>
+            <div ref={mcRef}>
+            <Panel title="Mail - collection reminder">
+              <p className="text-sm text-mut mt-1">
+                Drafted from the ledger row itself, so the amount and dates
+                are the invoice's own. Review it, add the recipient, and
+                send it from here. The send is recorded in the Outbox in
+                the Outbound Mail Hub with its true status.
+              </p>
+              <label className="block text-[12px] text-mut mt-3">
+                To (accounts payable email)
+                <input
+                  className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-1 block"
+                  placeholder="ap@customer.com"
+                  value={mc.to}
+                  onChange={(e) => setMc({ ...mc, to: e.target.value })}
+                />
+              </label>
+              <label className="block text-[12px] text-mut mt-2.5">
+                Subject
+                <input
+                  className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-1 block"
+                  value={mc.subject}
+                  onChange={(e) => setMc({ ...mc, subject: e.target.value })}
+                />
+              </label>
+              <textarea
+                className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-2.5 block"
+                rows={9}
+                value={mc.body}
+                onChange={(e) => setMc({ ...mc, body: e.target.value })}
+              />
+              <div className="flex items-center gap-3 mt-3">
+                <PrimaryBtn disabled={mc.busy} onClick={sendReminder}>
+                  Send reminder
+                </PrimaryBtn>
+                {mc.status && (
+                  <Pill
+                    kind={
+                      mc.status === "sent"
+                        ? "ok"
+                        : mc.status === "failed"
+                          ? "bad"
+                          : "warn"
+                    }
+                  >
+                    {sendStatusText(mc.status)}
+                  </Pill>
+                )}
+              </div>
+            </Panel>
+            </div>
+            </Rise>
+          )}
+
           {data.claims.length > 0 && (
             <Rise i={2}>
             <Panel
               title="Dispute priority - from the active run"
-              sub="The Deduction Agent flagged these short-pays during reconciliation. Expected recovery is win probability x claim, minus the cost of fighting. The claim itself is dispatched from the Dispute desk in Run Reconciliation."
+              sub="The Deduction Agent flagged these short-pays during reconciliation. They sit at the top of the collections work because the money is recoverable: expected recovery is win probability x claim, minus the cost of fighting. One click takes you to the claim on the Dispute desk, draft ready."
             >
               <DataTable
                 head={
@@ -480,6 +649,7 @@ export default function Forecast() {
                     <Th>Reason</Th>
                     <Th>Win probability</Th>
                     <Th>Expected recovery</Th>
+                    <Th>{""}</Th>
                   </>
                 }
               >
@@ -499,6 +669,17 @@ export default function Forecast() {
                           maximumFractionDigits: 2,
                         })}
                       </b>
+                    </Td>
+                    <Td>
+                      <GhostBtn
+                        onClick={() => {
+                          setIntent("slate-mail-cat", "disputes");
+                          setIntent("slate-mail-focus", cl.payment_id);
+                          goView("mail");
+                        }}
+                      >
+                        Dispatch dispute email →
+                      </GhostBtn>
                     </Td>
                   </Row>
                 ))}

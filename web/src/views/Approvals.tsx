@@ -348,15 +348,8 @@ export default function Approvals({
       <AnimatePresence>
         {selSolved.length > 0 && (
           <motion.div
-            className="fixed bottom-6 left-1/2 z-40 flex items-center gap-3 pl-5 pr-2 py-2 rounded-full border border-white/[0.14]"
-            style={{
-              background: "rgba(28, 28, 29, 0.82)",
-              backdropFilter: "blur(16px) saturate(1.2)",
-              WebkitBackdropFilter: "blur(16px) saturate(1.2)",
-              boxShadow:
-                "inset 0 1px 0 rgba(255,255,255,0.08), 0 16px 40px rgba(0,0,0,0.5)",
-              x: "-50%",
-            }}
+            className="glass-pop fixed bottom-6 left-1/2 z-40 flex items-center gap-3 pl-5 pr-2 py-2 rounded-full border border-white/[0.14]"
+            style={{ x: "-50%" }}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}

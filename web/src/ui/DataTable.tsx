@@ -67,9 +67,18 @@ export default function DataTable({
   );
 }
 
-export function Row({ children }: { children: ReactNode }) {
+export function Row({
+  children,
+  id,
+}: {
+  children: ReactNode;
+  id?: string;
+}) {
   return (
-    <tr className="border-t border-white/[0.05] transition-colors hover:bg-white/[0.02]">
+    <tr
+      id={id}
+      className="border-t border-white/[0.05] transition-colors hover:bg-white/[0.02]"
+    >
       {children}
     </tr>
   );

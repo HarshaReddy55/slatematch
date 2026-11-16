@@ -13,6 +13,7 @@ import Eval from "./views/Eval";
 import Health from "./views/Health";
 import { NAV_SPRING } from "./ui/motion";
 import Casebar from "./ui/Casebar";
+import RunDiff from "./ui/RunDiff";
 import Palette, { type PaletteActions } from "./ui/Palette";
 import Copilot from "./ui/Copilot";
 import DocsDrawer from "./ui/DocsDrawer";
@@ -30,7 +31,25 @@ import { setIntent } from "./lib/operate";
    With the Stage 4 flip this shell is also the default at /; the
    vanilla app stays reachable at /vanilla/ and both stacks share
    the session contract (sessionStorage slatematch_session_id,
-   localStorage slate-key / slate-tenant, identical API headers). */
+   localStorage slate-key / slate-tenant, identical API headers).
+   Stage 5B: the shell takes the Stack Glass template's actual
+   layout - a frosted left sidebar (the same spring pill, gliding
+   vertically). Stage 5C (Harsha rejected 5B on sight: "The
+   sidebar must contain the contents not the demo case details
+   itself"): the sidebar holds ONLY the navigation contents -
+   the brand block, the vertical view nav and the chrome ghost
+   actions in its footer. The case details return to a slim
+   casebar strip at the top of the content column, present
+   identically on every view, as in vanilla and Stage 5 v1. On
+   phone widths the sidebar collapses to a top bar (brand plus
+   the Menu toggle for the nav and footer); the casebar strip
+   sits in the content flow and stays visible on every view.
+   Stage 5D: the run comparison returns to the shell, directly
+   under the casebar strip, exactly where vanilla's #run-diff
+   sits - the casebar's Latest run cell (and the Run view's
+   Compare runs button) toggle it here via the
+   slate:toggle-run-diff event, on top of whichever view is
+   showing; the Run view no longer renders its own copy. */
 
 export type ViewKey =
   | "dash"
@@ -65,10 +84,12 @@ function fromHash(): ViewKey {
 }
 
 const shellBtn =
-  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap self-center";
+  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-[7px] rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap w-full text-left";
 
 export default function App() {
   const [view, setView] = useState<ViewKey>(fromHash);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
@@ -85,7 +106,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const on = () => setView(fromHash());
+    const on = () => {
+      setView(fromHash());
+      // Any navigation settles the phone sidebar back to its bar.
+      setPhoneOpen(false);
+    };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
@@ -94,6 +119,15 @@ export default function App() {
     const on = () => setHasKey(!!storedKey());
     window.addEventListener("slate:key-changed", on);
     return () => window.removeEventListener("slate:key-changed", on);
+  }, []);
+
+  // Vanilla's toggleRunDiff(): the shell owns the comparison
+  // panel's visibility; the casebar cell and the Run view's
+  // Compare runs button flip it through this event.
+  useEffect(() => {
+    const on = () => setDiffOpen((o) => !o);
+    window.addEventListener("slate:toggle-run-diff", on);
+    return () => window.removeEventListener("slate:toggle-run-diff", on);
   }, []);
 
   useEffect(() => {
@@ -129,7 +163,10 @@ export default function App() {
       setIntent("slate-run-live", "1");
       go("run");
     },
-    jumpApprovals: () => go("run"),
+    jumpApprovals: () => {
+      setIntent("slate-jump-approvals", "1");
+      go("run");
+    },
     exportPdf: () => {
       downloadExport("/api/v1/export/bundle.pdf", "slatematch-audit-bundle.pdf").then(
         (r) => toast(r.message)
@@ -176,91 +213,119 @@ export default function App() {
 
   return (
     <main className="min-h-screen text-ink font-sans">
-      <div className="max-w-[1180px] mx-auto px-5 py-6 flex flex-col gap-4">
-        <nav
-          aria-label="Views"
-          className="flex gap-1 flex-wrap border-b border-white/[0.10] pb-3 sticky top-0 z-30"
-          style={{
-            background: "rgba(28, 28, 29, 0.72)",
-            backdropFilter: "blur(16px) saturate(1.2)",
-            WebkitBackdropFilter: "blur(16px) saturate(1.2)",
-            boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.06)",
-          }}
-        >
-          {VIEWS.map((v) => {
-            const active = view === v.key;
-            return (
-              <button
-                key={v.key}
-                onClick={() => go(v.key)}
-                aria-current={active ? "page" : undefined}
-                className={`relative font-sans text-[13px] px-3 py-2 rounded-[3px] border cursor-pointer bg-transparent ${
-                  active
-                    ? "border-blue text-white font-medium"
-                    : "border-transparent text-mut hover:text-ink"
-                }`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="view-pill"
-                    className="absolute inset-0 bg-blue rounded-[3px]"
-                    transition={pillTransition}
-                  />
-                )}
-                <span className="relative z-10 flex items-baseline">
-                  <motion.span
-                    className="font-mono text-[10.5px] mr-1.5 inline-block"
-                    initial={false}
-                    animate={{
-                      scale: active ? 1.18 : 1,
-                      opacity: active ? 0.95 : 0.7,
-                    }}
-                    transition={pillTransition}
-                  >
-                    {v.num}
-                  </motion.span>
-                  {v.label}
-                </span>
-              </button>
-            );
-          })}
-          <span className="flex-1" />
-          <button className={shellBtn} onClick={() => setDocsOpen(true)} title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">
-            PRODUCT DOCS
-          </button>
-          <button className={shellBtn} onClick={() => setKeyOpen(true)} title="Set the API key this browser uses when this deployment is locked with keys">
-            {hasKey ? "ACCESS KEY: SET" : "ACCESS KEY"}
-          </button>
-          <button
-            className={shellBtn}
-            onClick={() => setPaletteOpen(true)}
-            title="Menu - jump to any view or action (Ctrl or Cmd + K)"
-            aria-label="Open menu"
+      <div className="flex flex-col lg:flex-row lg:items-start">
+        <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-white/[0.11] lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
+          <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2.5 shrink-0">
+            <div>
+              <div className="font-display text-[17px] font-bold leading-none tracking-[0.01em]">
+                SlateMatch
+              </div>
+              <div className="font-mono text-[9.5px] text-mut2 tracking-[0.06em] mt-1.5">
+                AUTONOMOUS CASH APPLICATION AGENT
+              </div>
+            </div>
+            <button
+              className="lg:hidden font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent cursor-pointer whitespace-nowrap"
+              aria-expanded={phoneOpen}
+              aria-label="Toggle sidebar"
+              onClick={() => setPhoneOpen((o) => !o)}
+            >
+              MENU {phoneOpen ? "▴" : "▾"}
+            </button>
+          </div>
+
+          <div
+            className={`${phoneOpen ? "block" : "hidden"} lg:block lg:flex-1 lg:min-h-0 lg:overflow-y-auto`}
           >
-            MENU
-          </button>
-          <span className="font-mono text-[10.5px] text-mut2 self-center tracking-[0.06em] hidden xl:inline">
-            AUTONOMOUS CASH APPLICATION AGENT
-          </span>
-        </nav>
+            <nav
+              aria-label="Views"
+              className="flex flex-col px-2.5 pb-2"
+            >
+              {VIEWS.map((v) => {
+                const active = view === v.key;
+                return (
+                  <button
+                    key={v.key}
+                    onClick={() => {
+                      go(v.key);
+                      setPhoneOpen(false);
+                    }}
+                    aria-current={active ? "page" : undefined}
+                    className={`relative w-full text-left font-sans text-[13px] px-3 py-[6px] rounded-[3px] border cursor-pointer bg-transparent ${
+                      active
+                        ? "border-blue text-white font-medium"
+                        : "border-transparent text-mut hover:text-ink"
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="view-pill"
+                        className="absolute inset-0 bg-blue rounded-[3px]"
+                        transition={pillTransition}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-baseline">
+                      <motion.span
+                        className="font-mono text-[10.5px] mr-1.5 inline-block"
+                        initial={false}
+                        animate={{
+                          scale: active ? 1.18 : 1,
+                        }}
+                        transition={pillTransition}
+                      >
+                        {v.num}
+                      </motion.span>
+                      {v.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
-        <Casebar view={view} toast={toast} />
+          <div
+            className={`${phoneOpen ? "block" : "hidden"} lg:block shrink-0`}
+          >
+            <div className="flex flex-col gap-1.5 px-4 py-2 border-t border-white/[0.08]">
+              <button className={shellBtn} onClick={() => setDocsOpen(true)} title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">
+                PRODUCT DOCS
+              </button>
+              <button className={shellBtn} onClick={() => setKeyOpen(true)} title="Set the API key this browser uses when this deployment is locked with keys">
+                {hasKey ? "ACCESS KEY: SET" : "ACCESS KEY"}
+              </button>
+              <button
+                className={shellBtn}
+                onClick={() => setPaletteOpen(true)}
+                title="Menu - jump to any view or action (Ctrl or Cmd + K)"
+                aria-label="Open menu"
+              >
+                MENU
+              </button>
+            </div>
+          </div>
+        </aside>
 
-        {view === "dash" && <Dashboard toast={toast} />}
-        {view === "cases" && <Cases />}
-        {view === "upload" && <Upload />}
-        {view === "run" && <Run />}
-        {view === "sap" && <Sap />}
-        {view === "ledger" && <Ledger />}
-        {view === "forecast" && <Forecast />}
-        {view === "mail" && <Mail />}
-        {view === "policy" && <Policy toast={toast} />}
-        {view === "eval" && <Eval />}
-        {view === "health" && <Health />}
+        <div className="flex-1 min-w-0 w-full">
+          <div className="max-w-[1180px] mx-auto px-5 py-6 flex flex-col gap-4">
+            <Casebar view={view} toast={toast} />
+            {diffOpen && <RunDiff onClose={() => setDiffOpen(false)} />}
+            {view === "dash" && <Dashboard toast={toast} />}
+            {view === "cases" && <Cases />}
+            {view === "upload" && <Upload />}
+            {view === "run" && <Run />}
+            {view === "sap" && <Sap />}
+            {view === "ledger" && <Ledger toast={toast} />}
+            {view === "forecast" && <Forecast toast={toast} />}
+            {view === "mail" && <Mail />}
+            {view === "policy" && <Policy toast={toast} />}
+            {view === "eval" && <Eval />}
+            {view === "health" && <Health />}
 
-        <p className="font-mono text-[11px] text-mut2 m-0">
-          Every figure is computed live from this workspace's API responses.
-        </p>
+            <p className="font-mono text-[11px] text-mut2 m-0">
+              Every figure is computed live from this workspace's API responses.
+            </p>
+          </div>
+        </div>
       </div>
 
       <Palette
@@ -275,7 +340,7 @@ export default function App() {
 
       {toastMsg && (
         <div
-          className="glass-panel fixed left-1/2 bottom-6 z-[80] rounded-full border border-white/[0.11] px-4 py-2 text-[13px] text-ink"
+          className="glass-pop fixed left-1/2 bottom-6 z-[80] rounded-full border border-white/[0.11] px-4 py-2 text-[13px] text-ink"
           style={{ transform: "translateX(-50%)" }}
           role="status"
         >

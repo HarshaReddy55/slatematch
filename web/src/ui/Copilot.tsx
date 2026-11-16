@@ -107,7 +107,7 @@ export default function Copilot() {
 
       {open && (
         <div
-          className="glass-panel fixed right-[22px] bottom-[86px] z-[60] w-[392px] max-w-[calc(100vw-32px)] max-h-[min(72vh,640px)] rounded-md border border-white/[0.11] flex flex-col"
+          className="glass-pop fixed right-[22px] bottom-[86px] z-[60] w-[392px] max-w-[calc(100vw-32px)] max-h-[min(72vh,640px)] rounded-md border border-white/[0.11] flex flex-col"
           role="dialog"
           aria-label="Assistant"
         >
@@ -188,7 +188,7 @@ export default function Copilot() {
           </div>
 
           <div className="p-3 border-t border-white/[0.08]">
-            <div className="flex items-center gap-2 bg-bg2 border border-line rounded-[6px] px-3 py-1.5 focus-within:border-blue">
+            <div className="flex items-center gap-2 glass-input border border-line rounded-[6px] px-3 py-1.5 focus-within:border-blue">
               <input
                 ref={inputRef}
                 type="text"

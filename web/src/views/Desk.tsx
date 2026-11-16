@@ -278,7 +278,7 @@ export default function Desk({
                 </GhostBtn>
               </div>
               <textarea
-                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 bg-black/25 text-ink mt-2.5"
+                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2.5"
                 rows={9}
                 placeholder="The claim draft appears here - editable before you send or copy it."
                 value={st.text}
@@ -296,7 +296,7 @@ export default function Desk({
               </div>
               <div className="flex gap-2 items-center flex-wrap mt-2.5">
                 <input
-                  className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 bg-transparent text-ink"
+                  className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
                   placeholder="Buyer AP email - e.g. ap@buyer.com"
                   value={st.to}
                   onChange={(e) => patchDesk(f.payment_id, { to: e.target.value })}
@@ -323,7 +323,7 @@ export default function Desk({
                 </GhostBtn>
               </div>
               <textarea
-                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 bg-black/25 text-ink mt-2"
+                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2"
                 rows={5}
                 placeholder="The rebuttal draft appears here. The 50% split answer is computed from this claim's expected value."
                 value={st.rebText}
@@ -381,7 +381,7 @@ export default function Desk({
                     </GhostBtn>
                   </div>
                   <textarea
-                    className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 bg-black/25 text-ink mt-2.5"
+                    className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2.5"
                     rows={9}
                     placeholder="The chase draft appears here - it asks the payer for the remittance advice and confirms the amount stays unapplied meanwhile."
                     value={st.text}
@@ -404,7 +404,7 @@ export default function Desk({
                   </div>
                   <div className="flex gap-2 items-center flex-wrap mt-2.5">
                     <input
-                      className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 bg-transparent text-ink"
+                      className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
                       placeholder="Payer AP email - e.g. ap@payer.com"
                       value={st.to}
                       onChange={(e) =>

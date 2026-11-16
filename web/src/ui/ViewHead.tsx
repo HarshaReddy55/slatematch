@@ -47,7 +47,7 @@ export function LoadError({ error }: { error: string }) {
       <p className="text-sm text-bad m-0 break-words">{error}</p>
       <p className="text-sm text-mut mt-2 mb-0">
         If this workspace is locked with an API key, set it with ACCESS
-        KEY in the shell above; both stacks share the same browser key.
+        KEY in the sidebar; both stacks share the same browser key.
       </p>
     </div>
   );

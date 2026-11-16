@@ -18,12 +18,14 @@ import {
   type Series,
 } from "../lib/dashboard";
 import { useRollUp } from "../lib/useRollUp";
+import { goView, setIntent } from "../lib/operate";
+import { requestShellRefresh } from "../lib/chrome";
 import Panel from "../ui/Panel";
 import Pill from "../ui/Pill";
 import StatCard from "../ui/StatCard";
 import Button from "../ui/Button";
-import Orb from "../ui/Orb";
 import SessionsPanel from "../ui/SessionsPanel";
+import ViewSkeleton from "../ui/Skeleton";
 import { RefreshFade, Rise, TitleRise } from "../ui/motion";
 
 /* Stage 1: the Dashboard, migrated. Same endpoints, same computation
@@ -42,15 +44,25 @@ function MiniStat({
   value,
   format,
   note,
+  onClick,
+  title,
 }: {
   label: string;
   value: number | null;
   format: (v: number) => string;
   note: string;
+  /** Stage 5: a figure that drills to its underlying records. */
+  onClick?: () => void;
+  title?: string;
 }) {
   const rolled = useRollUp(value ?? 0, format);
   return (
-    <div className="min-w-0">
+    <div
+      className={`min-w-0 ${onClick ? "cursor-pointer" : ""}`}
+      onClick={onClick}
+      title={title}
+      role={onClick ? "button" : undefined}
+    >
       <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
         {label}
       </div>
@@ -145,14 +157,7 @@ export default function Dashboard({
           </div>
         </header>
 
-        {!data && !error && (
-          <Panel>
-            <div className="flex items-center gap-3 py-2">
-              <Orb state="listening" size={30} label="Loading" />
-              <span className="text-mut text-sm">Loading this workspace...</span>
-            </div>
-          </Panel>
-        )}
+        {!data && !error && <ViewSkeleton kind="stats" />}
         {error && (
           <Panel title="Could not load the dashboard">
             <p className="text-sm text-bad mt-2 break-words">{error}</p>
@@ -168,10 +173,21 @@ export default function Dashboard({
           <Rise i={0}>
             <Panel title="Case staged, waiting to run">
               <p className="text-sm text-mut mt-1">
-                {data.ws.staged_payments || 0} wires waiting to run,{" "}
-                {money(data.ws.staged_payment_total_cents || 0)} staged. Run
-                the batch from Run Reconciliation, then refresh here.
+                {data.ws.staged_payments || 0} wires are staged (
+                {money(data.ws.staged_payment_total_cents || 0)}) and nothing
+                has been matched yet. The run settles them against the live
+                ledger.
               </p>
+              <div className="mt-3">
+                <Button
+                  onClick={() => {
+                    setIntent("slate-run-live", "1");
+                    goView("run");
+                  }}
+                >
+                  ▶ Execute 6-Agent Run Now →
+                </Button>
+              </div>
             </Panel>
           </Rise>
         )}
@@ -184,6 +200,24 @@ export default function Dashboard({
                 Load the demo case or upload files, run a batch, and this
                 dashboard fills with the same figures.
               </p>
+              <div className="mt-3">
+                <Button
+                  onClick={async () => {
+                    try {
+                      await api("/api/v1/seed", { method: "POST" });
+                      requestShellRefresh();
+                      load();
+                    } catch (e) {
+                      toast(
+                        "Load failed: " +
+                          (e instanceof Error ? e.message : String(e))
+                      );
+                    }
+                  }}
+                >
+                  Load demo case
+                </Button>
+              </div>
             </Panel>
           </Rise>
         )}
@@ -239,7 +273,12 @@ export default function Dashboard({
               label="Open exceptions (last run)"
               value={data.ribbon.exceptions}
               format={int}
-              note="Duplicates, no-match and unresolved residual rows from the last run"
+              note="Duplicates, no-match and unresolved residual rows from the last run. Click to open the run filtered to exactly these rows."
+              onClick={() => {
+                setIntent("slate-run-filter", "exceptions");
+                goView("run");
+              }}
+              title="Open Run Reconciliation filtered to the exception and disputed rows"
               spark={data.series.exceptions}
               sparkColor="#f2c14e"
               delta={dExc}
@@ -276,13 +315,23 @@ export default function Dashboard({
                 format={(v) =>
                   "$" + Math.round(v).toLocaleString("en-US")
                 }
-                note="Expected value of the dispute claims the agent has opened"
+                note="Expected value of the dispute claims the agent has opened. Click to open the claims."
+                onClick={() => {
+                  setIntent("slate-mail-cat", "disputes");
+                  goView("mail");
+                }}
+                title="Open these dispute claims in the Outbound Mail Hub"
               />
               <MiniStat
                 label="Unapplied cash in suspense"
                 value={data.ribbon.suspenseCents}
                 format={moneyRoll}
-                note="Absolute residual across the last run's matches, parked until resolved"
+                note="Absolute residual across the last run's matches, parked until resolved. Click to see the rows it is parked on."
+                onClick={() => {
+                  setIntent("slate-run-filter", "exceptions");
+                  goView("run");
+                }}
+                title="Open the run filtered to the rows this cash is parked on"
               />
             </div>
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mt-4 pt-4 border-t border-white/[0.06]">
@@ -296,7 +345,9 @@ export default function Dashboard({
                 label="Invoices settled (last run)"
                 value={data.ribbon.settledLines}
                 format={int}
-                note="Invoice lines cleared by the last run"
+                note="Invoice lines cleared by the last run. Click to see them in the run's matches, line by line."
+                onClick={() => goView("run")}
+                title="Open the run - its matches list every settled line and the payment that settled it"
               />
               <div className="min-w-0">
                 <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
@@ -351,7 +402,15 @@ export default function Dashboard({
                 </thead>
                 <tbody>
                   {data.runs.map((r) => (
-                    <tr key={r.run_id} className="border-t border-white/[0.05]">
+                    <tr
+                      key={r.run_id}
+                      className="border-t border-white/[0.05] cursor-pointer hover:bg-white/[0.03]"
+                      title="Open this run in Run Reconciliation"
+                      onClick={() => {
+                        setIntent("slate-open-run", r.run_id);
+                        goView("run");
+                      }}
+                    >
                       <td className="py-2 pr-3 font-mono text-[11.5px] text-mut">
                         {r.run_id}
                       </td>

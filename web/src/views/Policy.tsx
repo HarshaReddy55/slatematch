@@ -3,7 +3,8 @@ import { api, money } from "../lib/api";
 import { requestShellRefresh, type WorkspaceFull } from "../lib/chrome";
 import { goView } from "../lib/operate";
 import Panel from "../ui/Panel";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { Rise } from "../ui/motion";
 
 /* Stage 4: Policy Studio, migrated. Same endpoints, same body shape,
@@ -263,7 +264,7 @@ export default function Policy({
         purpose="The approval queue and the thresholds that govern automatic posting."
         onRefresh={load}
       />
-      {!values && !error && <Loading label="LOADING POLICY..." />}
+      {!values && !error && <ViewSkeleton kind="form" />}
       {error && <LoadError error={error} />}
       {values && (
         <Rise i={0}>
@@ -312,7 +313,7 @@ export default function Policy({
                               v ? { ...v, [f.key]: e.target.value } : v
                             )
                           }
-                          className="bg-bg2 border border-line rounded-[3px] px-2.5 py-2 text-[13.5px] text-ink w-full font-mono"
+                          className="glass-input border border-line rounded-[3px] px-2.5 py-2 text-[13.5px] text-ink w-full font-mono"
                         />
                         <p className="text-[12.5px] text-mut leading-relaxed m-0">
                           {f.why}

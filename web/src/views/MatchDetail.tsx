@@ -249,7 +249,7 @@ export default function MatchDetail({
           </p>
           <div className="flex gap-2 items-center flex-wrap">
             <input
-              className="font-sans text-[13px] px-3 py-1.5 rounded-[3px] border border-line2 bg-transparent text-ink box-border"
+              className="font-sans text-[13px] px-3 py-1.5 rounded-[3px] border border-line2 glass-input text-ink box-border"
               placeholder="Invoice ID - e.g. INV-1003"
               value={whyInv}
               onChange={(e) => setWhyInv(e.target.value)}

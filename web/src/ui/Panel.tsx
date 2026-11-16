@@ -4,9 +4,11 @@ import type { ReactNode } from "react";
     pass (15 Nov 2026). The recipe lives once in index.css as
     .glass-panel (translucent panel ground, backdrop blur over the
     hairline texture and the lit ground, top-edge light line, deep
-    soft shadow, hover lift); this component adds the brighter
-    hairline border and the panel's padding and title structure.
-    Tables (DataTable) inherit their glass from this container. */
+    soft shadow; hover deepens the shadow only - the Stage 5 jiggle
+    removal - and the Stage 5B tier lift sets its stops); this
+    component adds the brighter hairline border and the panel's
+    padding and title structure. Tables (DataTable) inherit their
+    glass from this container. */
 export default function Panel({
   title,
   sub,

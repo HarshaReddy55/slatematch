@@ -18,10 +18,12 @@ import {
   type HealthFull,
   type ReadyData,
 } from "../lib/insight";
+import { goView, setIntent } from "../lib/operate";
 import Panel from "../ui/Panel";
 import Pill, { type PillKind } from "../ui/Pill";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
-import ViewHead, { LoadError, Loading } from "../ui/ViewHead";
+import ViewHead, { LoadError } from "../ui/ViewHead";
+import ViewSkeleton from "../ui/Skeleton";
 import { EASE_OUT, RefreshFade, Reveal, Rise } from "../ui/motion";
 
 /* Stage 2: Agent Health, migrated. Cards, model quality, readiness
@@ -122,7 +124,7 @@ export default function Health() {
         purpose="Service readiness, model quality, diagnostics and audit trail."
         onRefresh={load}
       />
-      {!data && !error && <Loading label="LOADING AGENT HEALTH..." />}
+      {!data && !error && <ViewSkeleton kind="panels" />}
       {error && <LoadError error={error} />}
       {data && h && (
         <>
@@ -229,7 +231,16 @@ export default function Health() {
                     auto-posted, {heldOf(sel)} held, {sel.exceptions || 0}{" "}
                     exceptions
                     {runResolutionPct(sel) !== null &&
-                      ` - resolution ${runResolutionPct(sel)!.toFixed(1)}%`}
+                      ` - resolution ${runResolutionPct(sel)!.toFixed(1)}%`}{" "}
+                    <button
+                      className="text-blue2 underline bg-transparent border-0 p-0 cursor-pointer text-[13px]"
+                      onClick={() => {
+                        setIntent("slate-open-run", sel.run_id);
+                        goView("run");
+                      }}
+                    >
+                      Open this run
+                    </button>
                   </p>
                   )}
                 </Reveal>
