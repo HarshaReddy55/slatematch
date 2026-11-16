@@ -8,10 +8,49 @@ SHA-256 content fingerprint.
 """
 from fpdf import FPDF
 
+# The core PDF fonts are Latin-1 only: every euro sign, rupee sign or
+# non-Latin customer name used to degrade to "?" in the exported audit
+# bundle. When the DejaVu TTFs are present (the production image
+# installs fonts-dejavu-core), register them and write real Unicode;
+# otherwise fall back to the Latin-1 behaviour.
+import os as _os
+_DEJAVU_DIR = "/usr/share/fonts/truetype/dejavu"
+def _font_or(style_path, fallback):
+    return style_path if _os.path.exists(style_path) else fallback
+
+_REG = _os.path.join(_DEJAVU_DIR, "DejaVuSans.ttf")
+_BOLD = _os.path.join(_DEJAVU_DIR, "DejaVuSans-Bold.ttf")
+_DEJAVU = {
+    "": _REG,
+    "B": _BOLD,
+    "I": _font_or(_os.path.join(_DEJAVU_DIR, "DejaVuSans-Oblique.ttf"), _REG),
+    "BI": _font_or(_os.path.join(_DEJAVU_DIR, "DejaVuSans-BoldOblique.ttf"), _BOLD),
+}
+_UNICODE = _os.path.exists(_REG) and _os.path.exists(_BOLD)
+_FAM = "dejavu" if _UNICODE else "helvetica"
+
+
+def _register_fonts(pdf):
+    if not _UNICODE:
+        return
+    for style, path in _DEJAVU.items():
+        pdf.add_font("dejavu", style, path, uni=True)
+
 
 def _s(x):
-    """Latin-1 safe text for the core PDF fonts."""
-    return str(x if x is not None else "-").encode("latin-1", "replace").decode("latin-1")
+    """Text safe for the active font: Unicode with DejaVu, Latin-1
+    with the core-font fallback."""
+    t = str(x if x is not None else "-")
+    if _UNICODE:
+        return t
+    # No Unicode font available: transliterate the symbols a finance
+    # document actually carries, so a currency sign never degrades
+    # to "?" even in the fallback.
+    for a, b in (("€", "EUR "), ("₹", "INR "), ("£", "GBP "),
+                 ("—", "-"), ("–", "-"), ("‘", "'"), ("’", "'"),
+                 ("“", '"'), ("”", '"')):
+        t = t.replace(a, b)
+    return t.encode("latin-1", "replace").decode("latin-1")
 
 
 def money(cents):
@@ -31,7 +70,7 @@ def _nat(pid):
 class _Bundle(FPDF):
     def footer(self):
         self.set_y(-12)
-        self.set_font("helvetica", "I", 7.5)
+        self.set_font(_FAM, "I", 7.5)
         self.set_text_color(120, 120, 120)
         self.cell(0, 8, _s(f"SlateMatch - Audit & SAP Clearing Bundle - page {self.page_no()} of {{nb}}"), align="C")
 
@@ -40,7 +79,7 @@ def _section(pdf, title):
     if pdf.get_y() > pdf.page_break_trigger - 42:
         pdf.add_page()
     pdf.ln(4)
-    pdf.set_font("helvetica", "B", 12)
+    pdf.set_font(_FAM, "B", 12)
     pdf.set_fill_color(35, 35, 35)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(0, 8, "  " + _s(title), new_x="LMARGIN", new_y="NEXT", fill=True)
@@ -49,16 +88,16 @@ def _section(pdf, title):
 
 
 def _kv(pdf, pairs):
-    pdf.set_font("helvetica", "", 9.5)
+    pdf.set_font(_FAM, "", 9.5)
     for k, v in pairs:
-        pdf.set_font("helvetica", "B", 9.5)
+        pdf.set_font(_FAM, "B", 9.5)
         pdf.cell(52, 5.6, _s(k), new_x="RIGHT")
-        pdf.set_font("helvetica", "", 9.5)
+        pdf.set_font(_FAM, "", 9.5)
         pdf.multi_cell(0, 5.6, _s(v), new_x="LMARGIN", new_y="NEXT")
 
 
 def _table(pdf, headers, rows, widths, aligns=None):
-    pdf.set_font("helvetica", "", 8.6)
+    pdf.set_font(_FAM, "", 8.6)
     pdf.set_fill_color(255, 255, 255)
     pdf.set_text_color(20, 20, 20)
     pdf.set_draw_color(150, 150, 150)
@@ -75,6 +114,7 @@ def _table(pdf, headers, rows, widths, aligns=None):
 
 def render_bundle_pdf(bundle):
     pdf = _Bundle(orientation="P", unit="mm", format="A4")
+    _register_fonts(pdf)
     pdf.set_margins(14, 14, 14)
     pdf.set_auto_page_break(True, margin=16)
     pdf.add_page()
@@ -85,11 +125,11 @@ def render_bundle_pdf(bundle):
     case = bundle.get("case") or {}
     metrics = bundle.get("model_metrics") or {}
 
-    pdf.set_font("helvetica", "B", 20)
+    pdf.set_font(_FAM, "B", 20)
     pdf.cell(0, 10, "SlateMatch", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("helvetica", "B", 13)
+    pdf.set_font(_FAM, "B", 13)
     pdf.cell(0, 7, "Audit & SAP Clearing Bundle", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("helvetica", "", 9.5)
+    pdf.set_font(_FAM, "", 9.5)
     pdf.cell(0, 6, _s(f"Generated {bundle.get('generated_at', '')} - tenant {bundle.get('tenant', '')}"), new_x="LMARGIN", new_y="NEXT")
 
     total_value = sum(int((m.get("result") or {}).get("payment", {}).get("amount_cents") or 0) for m in matches)
@@ -131,7 +171,7 @@ def render_bundle_pdf(bundle):
                rows, (12, 34, 20, 26, 12, 48, 30),
                aligns=("LEFT", "LEFT", "RIGHT", "LEFT", "CENTER", "LEFT", "RIGHT"))
     else:
-        pdf.set_font("helvetica", "", 9.5)
+        pdf.set_font(_FAM, "", 9.5)
         pdf.cell(0, 6, "No matches on this run.", new_x="LMARGIN", new_y="NEXT")
 
     _section(pdf, "4. SAP clearing documents")
@@ -145,10 +185,10 @@ def render_bundle_pdf(bundle):
             if pdf.get_y() + needed > pdf.page_break_trigger:
                 pdf.add_page()
             number = doc.get("document_number") or "preview - number issued on approval"
-            pdf.set_font("helvetica", "B", 10)
+            pdf.set_font(_FAM, "B", 10)
             pdf.multi_cell(0, 6.2, _s(f"{pid} - document type {doc.get('document_type')} - {number}"),
                            new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("helvetica", "", 9.5)
+            pdf.set_font(_FAM, "", 9.5)
             pdf.cell(0, 5.6, _s(f"Balanced: {'YES' if doc.get('balanced') else 'NO'} - "
                                 f"total debits {money(doc.get('total_debits_cents'))} = "
                                 f"total credits {money(doc.get('total_credits_cents'))}"),
@@ -160,7 +200,7 @@ def render_bundle_pdf(bundle):
                    aligns=("LEFT", "LEFT", "RIGHT", "RIGHT"))
             pdf.ln(2)
     else:
-        pdf.set_font("helvetica", "", 9.5)
+        pdf.set_font(_FAM, "", 9.5)
         pdf.cell(0, 6, "No clearing documents on this run.", new_x="LMARGIN", new_y="NEXT")
 
     _section(pdf, "5. Exceptions")
@@ -171,7 +211,7 @@ def render_bundle_pdf(bundle):
         _table(pdf, ["Payment", "Kind", "Severity", "Recommended action", "Status"],
                rows, (18, 38, 18, 82, 26))
     else:
-        pdf.set_font("helvetica", "", 9.5)
+        pdf.set_font(_FAM, "", 9.5)
         pdf.cell(0, 6, "No exceptions on this run.", new_x="LMARGIN", new_y="NEXT")
 
     _section(pdf, "6. Audit trail")
@@ -187,11 +227,11 @@ def render_bundle_pdf(bundle):
         _table(pdf, ["Time (UTC)", "Actor", "Action", "Entity", "Details", "SHA-256"],
                rows, (24, 24, 32, 32, 42, 28))
     else:
-        pdf.set_font("helvetica", "", 9.5)
+        pdf.set_font(_FAM, "", 9.5)
         pdf.cell(0, 6, "No audit entries.", new_x="LMARGIN", new_y="NEXT")
 
     _section(pdf, "Notes")
-    pdf.set_font("helvetica", "", 9)
+    pdf.set_font(_FAM, "", 9)
     for note in [
         "The SAP documents in this bundle are posting packs in SAP BAPI_ACC_DOCUMENT_POST shape. No ERP is connected; a document marked preview receives its number when the match is approved.",
         "Every figure in this bundle is computed from the workspace's stored records at generation time. The same data is available as raw JSON from the bundle endpoint.",

@@ -26,6 +26,7 @@ class Payment:
     pod_verified_clean: bool = False
     remittance_text: str = ""
     references: List[str] = field(default_factory=list)   # invoice or PO refs found in remittance
+    subsidiary: Optional[str] = None   # paying legal entity / company code, when the wire states one
 
 @dataclass
 class Policy:

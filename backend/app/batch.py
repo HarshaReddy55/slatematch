@@ -60,6 +60,13 @@ def resolve_candidates(payment, open_invoices, aliases):
     # Currency is a hard accounting boundary, not a preference: a EUR
     # wire can never clear a USD invoice, whatever the numbers say.
     open_invoices = [i for i in open_invoices if i.currency == payment.currency]
+    # Subsidiary is the same kind of hard boundary when the wire
+    # states one: a payment booked to one legal entity must never
+    # clear another entity's invoices (no silent cross-company-code
+    # settlement). Payments that state no subsidiary - every seed,
+    # scenario and legacy upload - resolve exactly as before.
+    if getattr(payment, "subsidiary", None):
+        open_invoices = [i for i in open_invoices if i.subsidiary == payment.subsidiary]
     payer = (aliases.get(payment.payer_raw.strip().lower()) or payment.payer_raw).strip().lower()
     by_ref = []
     for inv in open_invoices:

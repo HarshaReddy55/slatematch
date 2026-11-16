@@ -25,7 +25,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     SLATEMATCH_DATA_DIR=/app/data \
     SLATEMATCH_KERNEL_BIN=/app/bin/slatematch-kernel
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install -r backend/requirements.txt

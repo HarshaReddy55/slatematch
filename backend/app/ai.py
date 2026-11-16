@@ -118,6 +118,9 @@ class AiBudget:
                 return False
             win.append(now)
             self._hits[ip] = win
+            if len(self._hits) > 512:  # sweep IPs whose window has fully expired
+                for k in [k for k, w in self._hits.items() if not w or now - max(w) >= 60]:
+                    self._hits.pop(k, None)
             return True
 
 

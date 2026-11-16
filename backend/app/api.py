@@ -61,6 +61,7 @@ def repo_for(tenant_id):
         if repo is None:
             repo = Repository(store.db_path(tenant_id))
             _repos[tenant_id] = repo
+            _maybe_reap()  # a new workspace is the natural housekeeping moment (hourly-throttled)
             # Anonymous demo sessions each open a repository (and a
             # database file). Cap the open set so a busy public link
             # cannot exhaust connections or memory; the least recently
@@ -126,10 +127,27 @@ def need(ctx, cap):
         raise HTTPException(403, f"role {ctx['role']} lacks capability {cap}")
     return ctx
 
+import threading as _threading
+_models_lock = _threading.Lock()
+
 def models():
+    # Trained once, then cached. The lock stops two concurrent first
+    # callers training twice.
     if "m" not in _models:
-        _models["m"] = mlmod.train_all()
+        with _models_lock:
+            if "m" not in _models:
+                _models["m"] = mlmod.train_all()
     return _models["m"]
+
+def _warm_models():
+    # The first /health or /ready probe used to pay the full training
+    # cost inside the request path (two GradientBoosting fits). Warm
+    # the cache on a background thread at startup instead; a probe
+    # that arrives early simply waits on the lock once.
+    try: models()
+    except Exception: pass
+
+_threading.Thread(target=_warm_models, daemon=True, name="slatematch-model-warmup").start()
 
 app = FastAPI(title="SlateMatch - Autonomous Cash Application Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -138,6 +156,7 @@ class PaymentIn(BaseModel):
     payment_id: str; payer_raw: str; amount_cents: int; currency: str = "USD"
     claimed_deduction_cents: int = 0; deduction_reason_raw: str = ""
     pod_verified_clean: bool = False; remittance_text: str = ""; references: List[str] = []
+    subsidiary: Optional[str] = None
 
 class BatchIn(BaseModel):
     idempotency_key: str
@@ -1146,9 +1165,15 @@ def demo_tenants(ctx=Depends(auth_context)):
                      "tenant and both headers are ignored.")}
 
 def _client_ip(request):
+    # Behind the ALB, the proxy APPENDS the real client IP as the LAST
+    # X-Forwarded-For hop. The first hop is whatever the client claimed
+    # and is spoofable, so keying the AI budget on it let one caller
+    # mint a fresh "IP" per request. Trust the last hop.
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:
-        return fwd.split(",")[0].strip()
+        hops = [h.strip() for h in fwd.split(",") if h.strip()]
+        if hops:
+            return hops[-1]
     return request.client.host if request.client else ""
 
 def _gemini_for(request):
@@ -1652,6 +1677,81 @@ def _manifest_put(key, meta):
     with open(tmp, "w") as f: json.dump(m, f)
     os.replace(tmp, p)
 
+def _manifest_drop(keys):
+    if not keys: return
+    m = _manifest()
+    for k in keys: m.pop(k, None)
+    p = os.path.join(_saved_dir(), "index.json")
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f: json.dump(m, f)
+    os.replace(tmp, p)
+
+_SAVE_CAP_PER_TENANT = 20
+
+def _prune_saves(base_tenant):
+    """Keep at most _SAVE_CAP_PER_TENANT snapshots per tenant; the
+    oldest are deleted (file + manifest entry). Snapshots used to
+    accumulate for the life of the deployment with no bound."""
+    mine = [(k, m) for k, m in _manifest().items() if m.get("tenant") == base_tenant]
+    if len(mine) <= _SAVE_CAP_PER_TENANT: return
+    mine.sort(key=lambda km: km[1].get("saved_at", ""))
+    drop = [k for k, _ in mine[:len(mine) - _SAVE_CAP_PER_TENANT]]
+    for k in drop:
+        try: os.remove(os.path.join(_saved_dir(), k + ".db"))
+        except OSError: pass
+    _manifest_drop(drop)
+
+_SESSION_DB_RE = _re.compile(r"^.+--[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\.db$")
+_SESSION_TTL_DAYS = 7
+_last_reap = [0.0]
+
+def _reap_session_dbs():
+    """Delete ephemeral per-tab workspace databases (tenant files of
+    the form <base>--<uuid>.db) untouched for _SESSION_TTL_DAYS.
+    Every browser tab used to leave one file behind forever. Base
+    tenant databases never match the pattern, snapshots live in a
+    subdirectory, and workspaces currently open are never touched."""
+    cutoff = _time.time() - _SESSION_TTL_DAYS * 86400
+    with _repos_lock:
+        open_tenants = set(_repos.keys())
+    try: names = os.listdir(store.base_dir)
+    except OSError: return
+    for name in names:
+        if not _SESSION_DB_RE.match(name): continue
+        if name[:-3] in open_tenants: continue
+        path = os.path.join(store.base_dir, name)
+        try:
+            if os.path.getmtime(path) >= cutoff: continue
+        except OSError: continue
+        for suffix in ("", "-wal", "-shm"):
+            try: os.remove(path + suffix)
+            except OSError: pass
+    # Hard bound: even inside the TTL window, a flood of fresh
+    # sessions must not grow the directory without limit. Evict the
+    # oldest files beyond the cap (open workspaces excluded above).
+    remaining = []
+    for name in names:
+        if not _SESSION_DB_RE.match(name): continue
+        if name[:-3] in open_tenants: continue
+        if not os.path.exists(os.path.join(store.base_dir, name)): continue  # reaped above
+        remaining.append(name)
+    if len(remaining) > _SESSION_FILE_CAP:
+        remaining.sort(key=lambda n: os.path.getmtime(os.path.join(store.base_dir, n)))
+        for name in remaining[:len(remaining) - _SESSION_FILE_CAP]:
+            path = os.path.join(store.base_dir, name)
+            for suffix in ("", "-wal", "-shm"):
+                try: os.remove(path + suffix)
+                except OSError: pass
+
+_SESSION_FILE_CAP = 256
+
+def _maybe_reap():
+    now = _time.time()
+    if now - _last_reap[0] < 3600: return
+    _last_reap[0] = now
+    try: _reap_session_dbs()
+    except Exception: pass
+
 def _db_counts(path):
     out = {}
     con = _sqlite3.connect(f"file:{path}?mode=ro", uri=True)
@@ -1683,6 +1783,8 @@ def session_save(body: dict = None, ctx=Depends(auth_context)):
             "label": ((body or {}).get("label") or "").strip()[:80],
             "counts": _db_counts(dest)}
     _manifest_put(body10, meta)
+    _prune_saves(ctx["base_tenant"])
+    _maybe_reap()
     return {"save_id": save_id, "saved_at": meta["saved_at"], "counts": meta["counts"],
             "storage": "Snapshots live on this server for the life of the deployment; a redeploy clears them."}
 
@@ -1841,7 +1943,10 @@ def _rate_limit_per_min():
 async def ops_middleware(request: Request, call_next):
     rid = request.headers.get("x-request-id") or str(_uuid.uuid4())
     key_id = request.headers.get("x-api-key", "anon")
-    bucket = hashlib.sha256(key_id.encode()).hexdigest()[:12] if key_id != "anon" else "anon"
+    # Anonymous traffic is bucketed per client IP: a single shared
+    # "anon" bucket let one heavy visitor rate-limit every other
+    # visitor on the public demo.
+    bucket = hashlib.sha256(key_id.encode()).hexdigest()[:12] if key_id != "anon" else f"anon:{_client_ip(request)}"
     now = _time.time()
     win = [t for t in _rate_windows[bucket] if now - t < 60]
     limit = _rate_limit_per_min()
@@ -1849,6 +1954,10 @@ async def ops_middleware(request: Request, call_next):
         return JSONResponse({"detail": "rate limit exceeded", "request_id": rid}, status_code=429,
                             headers={"Retry-After": "60", "X-Request-Id": rid})
     win.append(now); _rate_windows[bucket] = win
+    _maybe_reap()  # hourly-throttled housekeeping for ephemeral session DBs
+    if len(_rate_windows) > 256:  # sweep buckets whose window has fully expired
+        for b in [b for b, w in _rate_windows.items() if not w or now - max(w) >= 60]:
+            _rate_windows.pop(b, None)
     start = _time.time()
     response = await call_next(request)
     dur_ms = round((_time.time() - start) * 1000, 2)
