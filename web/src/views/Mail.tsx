@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   aiWhy,
   goView,
@@ -149,6 +150,8 @@ export default function Mail() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   const items = hub
     ? cat === "outbox"
@@ -402,7 +405,7 @@ export default function Mail() {
 
           {hub.state === "empty" && (
             <Rise i={1}>
-              <div className="glass-card rounded-md border border-white/[0.11] p-4">
+              <div className="glass-card rounded-none border border-line p-4">
                 <b>No active ledger loaded.</b>
                 <p className="text-[13px] text-mut m-0 mt-1">
                   Load a case or upload CSVs and the mail that case generates
@@ -430,10 +433,10 @@ export default function Mail() {
                 {CATS.map(([k, label]) => (
                   <button
                     key={k}
-                    className={`font-sans text-[12.5px] px-3 py-2 rounded-full border cursor-pointer pressable ${
+                    className={`font-sans text-[12.5px] px-3 py-2 rounded-none border cursor-pointer pressable ${
                       cat === k
-                        ? "border-blue text-white bg-blue"
-                        : "border-line2 text-mut bg-transparent hover:text-ink"
+                        ? "border-blue text-ink bg-[#2e3d5e]"
+                        : "border-line text-mut bg-panel2 hover:text-ink"
                     }`}
                     onClick={() => { setCat(k); setMailNote(null); }}
                   >
@@ -460,10 +463,10 @@ export default function Mail() {
                     <div className="flex flex-col gap-1.5 mt-2">
                       {items.map((d, i) => {
                         const active = i === idx;
-                        const cls = `text-left w-full rounded-md border px-3 py-2.5 cursor-pointer pressable ${
+                        const cls = `text-left w-full rounded-none border px-3 py-2.5 cursor-pointer pressable ${
                           active
                             ? "border-blue bg-[rgba(61,117,232,0.10)]"
-                            : "border-white/[0.08] bg-white/[0.02] hover:border-line2"
+                            : "border-line bg-panel2 hover:border-line2"
                         }`;
                         if (cat === "disputes") {
                           const x = d as MailHub["disputes"][number];
@@ -515,7 +518,7 @@ export default function Mail() {
                 </Panel>
 
                 {/* preview pane with fixed footer */}
-                <section className="glass-panel rounded-md border border-white/[0.11] p-4 sm:p-5 flex flex-col max-h-[760px]">
+                <section className="glass-panel rounded-none border border-line p-4 sm:p-5 flex flex-col max-h-[760px]">
                   {!item ? (
                     <p className="text-[13px] text-mut m-0">
                       Nothing in this stream for the latest run.
@@ -546,7 +549,7 @@ export default function Mail() {
                                 {TONES.map(([t, l]) => (
                                   <button
                                     key={t}
-                                    className={`font-sans text-[12px] px-2.5 py-1 rounded-full border cursor-pointer pressable ${tone === t ? "border-blue text-white bg-blue" : "border-line2 text-mut bg-transparent hover:text-ink"}`}
+                                    className={`font-sans text-[12px] px-2.5 py-1 rounded-none border cursor-pointer pressable ${tone === t ? "border-blue text-white bg-[rgba(61,117,232,0.18)]" : "border-line2 text-ink bg-panel hover:text-ink"}`}
                                     onClick={() => { setTone(t); setMailNote(null); }}
                                   >
                                     {l}
@@ -623,13 +626,13 @@ export default function Mail() {
                           ) : (
                             <>
                               <input
-                                className="w-full box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
+                                className="w-full box-border font-sans text-[13px] px-3 py-2 rounded-none border border-line2 glass-input text-ink"
                                 placeholder="ap@customer.com"
                                 value={preview.to}
                                 onChange={(e) => setPreview((p) => ({ ...p, to: e.target.value }))}
                               />
                               <textarea
-                                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2"
+                                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-none border border-line2 glass-input text-ink mt-2"
                                 rows={10}
                                 value={preview.text}
                                 onChange={(e) => setPreview((p) => ({ ...p, text: e.target.value }))}
@@ -645,7 +648,7 @@ export default function Mail() {
                       </div>
                       <div className="flex items-center gap-2.5 flex-wrap border-t border-white/[0.08] pt-3 mt-3 shrink-0">
                         <button
-                          className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 pressable"
+                          className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-50 pressable"
                           disabled={preview.busy || preview.drafting}
                           onClick={send}
                         >

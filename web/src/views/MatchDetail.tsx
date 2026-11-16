@@ -110,7 +110,7 @@ export default function MatchDetail({
       </p>
 
       {ded && (
-        <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+        <div className="glass-card rounded-none border border-line p-3.5">
           <p className="text-[13px] leading-relaxed m-0">
             <b>Deduction intelligence:</b> classified{" "}
             <b>{ded.classification?.label || ""}</b> (
@@ -140,7 +140,7 @@ export default function MatchDetail({
       )}
 
       {res.reasoning && (res.reasoning.steps || []).length > 0 && (
-        <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+        <div className="glass-card rounded-none border border-line p-3.5">
           <h4 className="font-display text-[14px] font-semibold m-0">
             How this decision was made
           </h4>
@@ -152,7 +152,7 @@ export default function MatchDetail({
               key={i}
               className="flex gap-2.5 py-2 border-b border-white/[0.05] last:border-0"
             >
-              <span className="flex-none w-[22px] h-[22px] rounded-full bg-blue text-white font-display font-bold text-[12px] flex items-center justify-center">
+              <span className="flex-none w-[22px] h-[22px] rounded-[50%] bg-blue text-white font-display font-bold text-[12px] flex items-center justify-center">
                 {i + 1}
               </span>
               <span className="text-[13px] leading-relaxed">{s}</span>
@@ -222,7 +222,7 @@ export default function MatchDetail({
       )}
 
       {payment && rej.length > 0 && (
-        <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+        <div className="glass-card rounded-none border border-line p-3.5">
           <p className="text-[13px] leading-relaxed m-0">
             <b>Counterfactual - why these invoices were not picked.</b> Each
             button re-runs the solver with that invoice forced into the set
@@ -243,13 +243,13 @@ export default function MatchDetail({
         </div>
       )}
       {payment && rej.length === 0 && (
-        <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+        <div className="glass-card rounded-none border border-line p-3.5">
           <p className="text-[13px] m-0 mb-2">
             Why was another invoice not picked? (counterfactual)
           </p>
           <div className="flex gap-2 items-center flex-wrap">
             <input
-              className="font-sans text-[13px] px-3 py-1.5 rounded-[3px] border border-line2 glass-input text-ink box-border"
+              className="font-sans text-[13px] px-3 py-1.5 rounded-none border border-line2 glass-input text-ink box-border"
               placeholder="Invoice ID - e.g. INV-1003"
               value={whyInv}
               onChange={(e) => setWhyInv(e.target.value)}
@@ -308,7 +308,7 @@ function Derivation({ d }: { d: NonNullable<StoredMatch["result"]>["derivation"]
   const cd = d.confidence_derivation || {};
   const g = d.greedy_comparison || {};
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-3.5 text-[13px] leading-relaxed">
+    <div className="glass-card rounded-none border border-line p-3.5 text-[13px] leading-relaxed">
       <b>Derivation - how this decision was computed</b>
       <br />
       Cash conservation: net applied {money(eq.net_applied_cents || 0)} -
@@ -361,7 +361,7 @@ export function ErpServerDoc({ d }: { d: ErpPaymentDocument }) {
   const doc = d.document;
   const [showPayload, setShowPayload] = useState(false);
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+    <div className="glass-card rounded-none border border-line p-3.5">
       <p className="text-[13px] leading-relaxed m-0">
         <b>
           {doc.document_number
@@ -482,7 +482,7 @@ function ErpClientDoc({ match }: { match: StoredMatch }) {
   const dispute = ded && ded.autonomous_action === "AUTO_GENERATE_DISPUTE_CLAIM";
   const ap = res.approval || {};
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+    <div className="glass-card rounded-none border border-line p-3.5">
       <p className="text-[13px] leading-relaxed m-0">
         <b>Posting preview - not a posting.</b> (Built in the browser for
         this view, because this match was produced by a clean-room use-case

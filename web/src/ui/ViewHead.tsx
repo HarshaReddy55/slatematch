@@ -43,7 +43,7 @@ export default function ViewHead({
 
 export function LoadError({ error }: { error: string }) {
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-4">
+    <div className="glass-card rounded-none border border-line p-4">
       <p className="text-sm text-bad m-0 break-words">{error}</p>
       <p className="text-sm text-mut mt-2 mb-0">
         If this workspace is locked with an API key, set it with ACCESS

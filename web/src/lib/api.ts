@@ -84,6 +84,14 @@ export interface MatchRecord {
       autonomous_action?: string;
       expected_recovery_value_usd?: number;
     };
+    /* The solver derivation (Stage 6: the case brief's held total
+       reads equation.payment_cents, as vanilla's briefOutcome
+       does). */
+    derivation?: {
+      equation?: {
+        payment_cents?: number;
+      };
+    };
   };
 }
 

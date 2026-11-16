@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   goView,
   setIntent,
@@ -9,7 +10,6 @@ import {
 import Panel from "../ui/Panel";
 import StatCard from "../ui/StatCard";
 import Pill from "../ui/Pill";
-import SlideOver from "../ui/SlideOver";
 import ViewHead, { LoadError } from "../ui/ViewHead";
 import ViewSkeleton from "../ui/Skeleton";
 import { Rise } from "../ui/motion";
@@ -27,7 +27,6 @@ export default function Sap() {
   const [ws, setWs] = useState<WorkspaceOperate | null>(null);
   const [error, setError] = useState("");
   const [sel, setSel] = useState(0);
-  const [payloadOpen, setPayloadOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
@@ -44,6 +43,8 @@ export default function Sap() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   const ready = docs && docs.run_id && docs.documents.length > 0;
   const staged = !ready && ws?.run_status === "staged";
@@ -86,7 +87,7 @@ export default function Sap() {
 
       {docs && !ready && !staged && (
         <Rise i={0}>
-          <div className="glass-card rounded-md border border-white/[0.11] p-4">
+          <div className="glass-card rounded-none border border-line p-4">
             <b>No posting documents yet.</b>
             <p className="text-[13px] text-mut m-0 mt-1">
               The latest run has no cleared payments. Load a case, run it,
@@ -112,7 +113,7 @@ export default function Sap() {
                 format={(v) => money(Math.round(v))}
                 note="Total debits across those documents - credits equal debits to the cent"
               />
-              <div className="glass-card rounded-md border border-white/[0.11] p-4 flex flex-col gap-1 min-w-0">
+              <div className="glass-card rounded-none border border-line p-4 flex flex-col gap-1 min-w-0">
                 <span className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
                   SAP S/4HANA BAPI &amp; EBRR
                 </span>
@@ -142,10 +143,10 @@ export default function Sap() {
                     {docs.documents.map((x, i) => (
                       <button
                         key={x.payment_id}
-                        className={`font-sans text-[12.5px] px-3 py-1.5 rounded-full border cursor-pointer pressable ${
+                        className={`font-sans text-[12.5px] px-3 py-1.5 rounded-none border cursor-pointer pressable ${
                           i === sel
-                            ? "border-blue text-white bg-blue"
-                            : "border-line2 text-mut bg-transparent hover:text-ink"
+                            ? "border-blue text-ink bg-[#2e3d5e]"
+                            : "border-line text-mut bg-panel2 hover:text-ink"
                         }`}
                         onClick={() => setSel(i)}
                       >
@@ -180,17 +181,31 @@ export default function Sap() {
                       {cur.document.note}
                     </p>
                   )}
-                  <div className="mt-3">
-                    <GhostBtn onClick={() => setPayloadOpen(true)}>
-                      View BAPI_ACC_DOCUMENT_POST payload
+                </Panel>
+              </Rise>
+
+              <Rise i={3}>
+                {/* Vanilla shows the payload as an inline panel
+                    (index.html:153), not behind a button: title,
+                    the ERP sentence, Copy payload, the jsonbox. */}
+                <Panel
+                  title="BAPI_ACC_DOCUMENT_POST payload"
+                  sub="The exact JSON the ERP would receive for the selected payment."
+                >
+                  <div className="mt-3 mb-3">
+                    <GhostBtn onClick={copyPayload}>
+                      {copied ? "Copied" : "Copy payload"}
                     </GhostBtn>
                   </div>
+                  <JsonBox
+                    text={JSON.stringify(cur.document.bapi_payload, null, 2)}
+                  />
                 </Panel>
               </Rise>
             </>
           )}
 
-          <Rise i={3}>
+          <Rise i={4}>
             <Panel title="ASC 606 / IFRS 15 EBRR - dispute reserve journal">
               {docs.reserve && docs.reserve.journals.length ? (
                 <div className="flex flex-col gap-4 mt-2">
@@ -220,27 +235,6 @@ export default function Sap() {
         </>
       )}
 
-      <SlideOver
-        open={payloadOpen && !!cur}
-        title="BAPI_ACC_DOCUMENT_POST payload"
-        onClose={() => setPayloadOpen(false)}
-      >
-        {cur && (
-          <>
-            <p className="text-[13px] text-mut m-0 mb-3">
-              The exact JSON the ERP would receive for {cur.payment_id}.
-            </p>
-            <div className="mb-3">
-              <GhostBtn onClick={copyPayload}>
-                {copied ? "Copied" : "Copy payload"}
-              </GhostBtn>
-            </div>
-            <JsonBox
-              text={JSON.stringify(cur.document.bapi_payload, null, 2)}
-            />
-          </>
-        )}
-      </SlideOver>
     </>
   );
 }

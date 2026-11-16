@@ -6,6 +6,8 @@ import {
   type ScenarioFull,
   type WorkspaceOperate,
 } from "../lib/operate";
+import { requestShellRefresh } from "../lib/chrome";
+import { invalidateBrief } from "../lib/brief";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
@@ -80,8 +82,26 @@ export default function Cases() {
           ? `Case loaded and run: ${d.run.auto_posted} of ${d.run.payments} payments auto-posted`
           : `Case loaded: ${d.workspace.case?.name} - ${d.workspace.open_invoices} invoices, ${d.payments.length} payments staged`
       );
-      if (run && !d.run) setIntent("slate-run-live", "1");
-      goView("run");
+      /* Stage 6 (Item 7 register): vanilla's two actions land in
+         two different places - "Stage Case (Inspect Before Run)"
+         goes to the Dashboard (loadCase ends in go("dash")), and
+         only "Stage & Run Now" goes to Run and starts the stream
+         (loadCaseAndRun). Until now both landed on Run. A load
+         also ends the deliberate-empty state, invalidates the
+         brief and refreshes the shell, as loadCase does. */
+      try {
+        sessionStorage.removeItem("slate-empty");
+      } catch {
+        /* ignore */
+      }
+      invalidateBrief();
+      requestShellRefresh();
+      if (run) {
+        if (!d.run) setIntent("slate-run-live", "1");
+        goView("run");
+      } else {
+        goView("dash");
+      }
     } catch (e) {
       setNote("Load failed: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -147,6 +167,13 @@ export default function Cases() {
       setCbNote(
         `Your case is now the active case and it has already run: ${invs.length} invoices and 1 payment${d.run ? `, ${d.run.auto_posted} of ${d.run.payments} auto-posted` : ""}. Taking you to the run - open the match for its full derivation.`
       );
+      try {
+        sessionStorage.removeItem("slate-empty");
+      } catch {
+        /* ignore */
+      }
+      invalidateBrief();
+      requestShellRefresh();
       setTimeout(() => goView("run"), 650);
     } catch (e) {
       setCbNote("Case failed: " + (e instanceof Error ? e.message : String(e)));
@@ -156,7 +183,7 @@ export default function Cases() {
   };
 
   const inputCls =
-    "font-sans text-[13px] px-2.5 py-1.5 rounded-[3px] border border-line2 glass-input text-ink w-full box-border";
+    "font-sans text-[13px] px-2.5 py-1.5 rounded-none border border-line2 glass-input text-ink w-full box-border";
 
   return (
     <>
@@ -169,7 +196,7 @@ export default function Cases() {
       {!list && !error && <ViewSkeleton kind="panels" />}
       {error && <LoadError error={error} />}
       {note && (
-        <p className="text-[13px] m-0 border border-blue/40 bg-[rgba(61,117,232,0.10)] rounded-md px-3 py-2">
+        <p className="text-[13px] m-0 border border-blue/40 bg-[rgba(61,117,232,0.10)] rounded-none px-3 py-2">
           {note}
         </p>
       )}
@@ -381,7 +408,7 @@ export default function Cases() {
                   </p>
                   <div className="flex gap-2 flex-wrap mt-3">
                     <button
-                      className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 pressable"
+                      className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-50 pressable"
                       disabled={!!busyId}
                       onClick={() => stageCase(s.id, false)}
                     >

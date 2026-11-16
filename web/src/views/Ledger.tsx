@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   cubeRows,
   ledgerKpis,
@@ -86,7 +87,7 @@ function EditCell({
     }
   };
   const fieldCls =
-    "glass-input border border-line rounded-[3px] px-2 py-1.5 text-[12.5px] text-ink";
+    "glass-input border border-line rounded-none px-2 py-1.5 text-[12.5px] text-ink";
   return (
     <span className="inline-flex gap-1.5 items-start flex-wrap">
       {area ? (
@@ -143,6 +144,8 @@ export default function Ledger({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   // The casebar cells land on their panel (vanilla gotoLedger*).
   useEffect(() => {
@@ -376,7 +379,7 @@ export default function Ledger({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter by invoice, customer or PO"
-              className="w-full sm:w-[320px] glass-input border border-line rounded-[3px] px-3 py-2 text-[13px] text-ink placeholder:text-mut2 outline-none focus:border-blue mt-2"
+              className="w-full sm:w-[320px] glass-input border border-line rounded-none px-3 py-2 text-[13px] text-ink placeholder:text-mut2 outline-none focus:border-blue mt-2"
             />
             <RefreshFade
               signature={`${data.inv.length}:${kpis.totalCents}:${kpis.overdueCents}`}

@@ -24,6 +24,7 @@ import {
   type WorkspaceOperate,
 } from "../lib/operate";
 import { gradeCase, normalisedStored } from "../lib/insight";
+import { requestShellRefresh } from "../lib/chrome";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import Pill from "../ui/Pill";
@@ -209,6 +210,21 @@ export default function Run() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  /* Stage 6 (Item 1): a workspace replaced from the shell (case
+     switch, reset, restore) reloads this view too, so it can
+     never present the previous case's run as the new case's -
+     but never mid-stream: the stream owns the view until it
+     lands, and its completion path reloads anyway. */
+  const runningRef = useRef(false);
+  runningRef.current = running;
+  useEffect(() => {
+    const on = () => {
+      if (!runningRef.current) load();
+    };
+    window.addEventListener("slate:ws-refresh", on);
+    return () => window.removeEventListener("slate:ws-refresh", on);
   }, [load]);
 
   /* ---------------- live agent strip (AGENT_LIVE semantics) -------- */
@@ -459,6 +475,9 @@ export default function Run() {
     setViewRid(null);
     setExcFilter(false);
     await load();
+    /* Vanilla: a landed run invalidates the brief and refreshes
+       every workspace surface (assist.js, on stream end). */
+    requestShellRefresh();
     setApprReload((n) => n + 1);
     setDeskReload((n) => n + 1);
   }, [running, load]);
@@ -523,6 +542,9 @@ export default function Run() {
       setViewRid(null);
       setExcFilter(false);
       await load();
+      /* Vanilla: a finished batch run invalidates the brief and
+         refreshes every workspace surface (operate.js). */
+      requestShellRefresh();
       setApprReload((n) => n + 1);
       setDeskReload((n) => n + 1);
     }
@@ -706,6 +728,7 @@ export default function Run() {
         body: JSON.stringify({ decision: "approve" }),
       });
       await load();
+      requestShellRefresh();
       setApprReload((n) => n + 1);
     } catch (e) {
       setLiveError(e instanceof Error ? e.message : String(e));
@@ -893,7 +916,7 @@ export default function Run() {
                         {chart.series.map((s, c) => (
                           <span key={c}>
                             <span
-                              className="inline-block w-2 h-2 rounded-full mr-1.5"
+                              className="inline-block w-2 h-2 rounded-[50%] mr-1.5"
                               style={{ background: CHART_COLS[c] }}
                             />
                             <b style={{ color: CHART_COLS[c] }}>
@@ -916,12 +939,12 @@ export default function Run() {
                 </p>
               )}
               {liveSummary && (
-                <p className="text-[13px] m-0 mt-2.5 border border-ok/40 bg-okbg rounded-md px-3 py-2">
+                <p className="text-[13px] m-0 mt-2.5 border border-ok/40 bg-okbg rounded-none px-3 py-2">
                   {liveSummary}
                 </p>
               )}
               {liveError && (
-                <p className="text-[13px] m-0 mt-2.5 border border-bad/40 bg-badbg rounded-md px-3 py-2 break-words">
+                <p className="text-[13px] m-0 mt-2.5 border border-bad/40 bg-badbg rounded-none px-3 py-2 break-words">
                   {liveError}
                 </p>
               )}
@@ -959,7 +982,7 @@ export default function Run() {
                           {i > 0 && (
                             <span className="self-center text-mut2">→</span>
                           )}
-                          <div className="glass-card rounded-md border border-white/[0.11] px-3 py-2.5 min-w-[128px]">
+                          <div className="glass-card rounded-none border border-line px-3 py-2.5 min-w-[128px]">
                             <b className="text-[13px]">{name}</b>
                             <div className="text-[12px] text-mut">{counts[i]}</div>
                             <div className="text-[12px] text-mut">
@@ -1002,10 +1025,10 @@ export default function Run() {
                           <span className="self-center text-mut2">→</span>
                         )}
                         <button
-                          className={`glass-card text-left rounded-md border px-3 py-2.5 min-w-[128px] cursor-pointer pressable ${
+                          className={`glass-card text-left rounded-none border px-3 py-2.5 min-w-[128px] cursor-pointer pressable ${
                             agentSel === i
                               ? "border-blue"
-                              : "border-white/[0.11]"
+                              : "border-line"
                           }`}
                           onClick={() => setAgentSel(i)}
                         >
@@ -1178,7 +1201,7 @@ export default function Run() {
                     {lanes.map((l) => (
                       <div
                         key={l.pid}
-                        className="glass-card rounded-md border border-white/[0.11] px-3 py-2.5"
+                        className="glass-card rounded-none border border-line px-3 py-2.5"
                       >
                         <div className="flex items-baseline justify-between gap-2">
                           <span className="text-[13px]">
@@ -1211,7 +1234,7 @@ export default function Run() {
                   </div>
                   <div
                     ref={logRef}
-                    className="font-mono text-[11.5px] leading-[1.7] bg-black/35 border border-white/[0.08] rounded-md p-3 overflow-y-auto max-h-[420px]"
+                    className="font-mono text-[11.5px] leading-[1.7] bg-[#101014] text-[#c3cfe9] border border-line rounded-none p-3 overflow-y-auto max-h-[420px]"
                   >
                     {log.map((l, i) => (
                       <div key={i}>
@@ -1234,7 +1257,7 @@ export default function Run() {
             <Rise i={3}>
               <Panel title={`Case verdict - ${data.ws.case.name}`}>
                 <p
-                  className={`text-[13px] font-medium m-0 mt-1 rounded-md px-3 py-2 border ${
+                  className={`text-[13px] font-medium m-0 mt-1 rounded-none px-3 py-2 border ${
                     gradeResult.allPass
                       ? "border-ok/40 bg-okbg text-ok"
                       : "border-bad/40 bg-badbg text-bad"
@@ -1538,6 +1561,10 @@ export default function Run() {
                 onEvidence={openEvidence}
                 onDecided={() => {
                   load();
+                  /* Vanilla: a decision invalidates the brief
+                     and refreshes the workspace strip (the
+                     approvals count moves at once). */
+                  requestShellRefresh();
                 }}
               />
             </div>

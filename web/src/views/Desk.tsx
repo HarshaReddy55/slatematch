@@ -13,6 +13,8 @@ import {
 import Panel from "../ui/Panel";
 import Pill from "../ui/Pill";
 import { GhostBtn } from "../ui/Stage3";
+import DataTable, { Row, Td, Th } from "../ui/DataTable";
+import type { OutboxMail } from "../lib/operate";
 
 /* The dispute desk, the React form of renderDisputeDesk() +
    deskCard() / chaseCard() in assist.js. Claims come from the run's
@@ -84,6 +86,28 @@ export default function Desk({
       payer: e.detail?.payer || "Unknown payer",
       amount_cents: e.detail?.amount_cents || 0,
     }));
+
+  /* loadOutbox() in assist.js: the outbox strip inside the desk
+     panel, refreshed after every send from this panel. */
+  const [outbox, setOutbox] = useState<{
+    configured: boolean;
+    from?: string;
+    mails: OutboxMail[];
+  } | null>(null);
+  const [outboxTick, setOutboxTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    api<{ configured: boolean; from?: string; mails: OutboxMail[] }>(
+      "/api/v1/mail/outbox"
+    )
+      .then((o) => {
+        if (live) setOutbox(o);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [reloadSignal, outboxTick]);
 
   const [deskState, setDeskState] = useState<Record<string, DeskState>>({});
   const [chaseState, setChaseState] = useState<
@@ -169,6 +193,7 @@ export default function Desk({
           kind: r.status === "sent" ? "ok" : r.status === "failed" ? "bad" : "warn",
         },
       });
+      setOutboxTick((t) => t + 1);
     } catch (e) {
       patchDesk(f.payment_id, {
         mail: { text: e instanceof Error ? e.message : String(e), kind: "bad" },
@@ -213,6 +238,7 @@ export default function Desk({
     setChaseState((s) => ({ ...s, [f.payment_id]: { ...st, busy: true } }));
     try {
       const r = await sendMail("chase", f.payment_id, st.to, st.text);
+      setOutboxTick((t) => t + 1);
       setChaseState((s) => ({
         ...s,
         [f.payment_id]: {
@@ -247,7 +273,7 @@ export default function Desk({
           return (
             <div
               key={f.payment_id}
-              className="glass-card rounded-md border border-white/[0.11] p-4"
+              className="glass-card rounded-none border border-line p-4"
             >
               <p className="text-[13px] leading-relaxed m-0">
                 <b>{f.payment_id}</b> - {f.payer} - claim{" "}
@@ -260,10 +286,10 @@ export default function Desk({
                 {TONES.map(([t, l]) => (
                   <button
                     key={t}
-                    className={`font-sans text-[12px] px-2.5 py-1 rounded-full border cursor-pointer pressable ${
+                    className={`font-sans text-[12px] px-2.5 py-1 rounded-none border cursor-pointer pressable ${
                       st.tone === t
-                        ? "border-blue text-white bg-blue"
-                        : "border-line2 text-mut bg-transparent hover:text-ink"
+                        ? "border-blue text-white bg-[rgba(61,117,232,0.18)]"
+                        : "border-line2 text-ink bg-panel hover:text-ink"
                     }`}
                     onClick={() => {
                       patchDesk(f.payment_id, { tone: t });
@@ -278,7 +304,7 @@ export default function Desk({
                 </GhostBtn>
               </div>
               <textarea
-                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2.5"
+                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-none border border-line2 glass-input text-ink mt-2.5"
                 rows={9}
                 placeholder="The claim draft appears here - editable before you send or copy it."
                 value={st.text}
@@ -296,13 +322,13 @@ export default function Desk({
               </div>
               <div className="flex gap-2 items-center flex-wrap mt-2.5">
                 <input
-                  className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
+                  className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-none border border-line2 glass-input text-ink"
                   placeholder="Buyer AP email - e.g. ap@buyer.com"
                   value={st.to}
                   onChange={(e) => patchDesk(f.payment_id, { to: e.target.value })}
                 />
                 <button
-                  className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 pressable"
+                  className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-50 pressable"
                   disabled={st.busy}
                   onClick={() => sendDesk(f)}
                 >
@@ -323,7 +349,7 @@ export default function Desk({
                 </GhostBtn>
               </div>
               <textarea
-                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2"
+                className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-none border border-line2 glass-input text-ink mt-2"
                 rows={5}
                 placeholder="The rebuttal draft appears here. The 50% split answer is computed from this claim's expected value."
                 value={st.rebText}
@@ -367,7 +393,7 @@ export default function Desk({
               return (
                 <div
                   key={f.payment_id}
-                  className="glass-card rounded-md border border-white/[0.11] p-4"
+                  className="glass-card rounded-none border border-line p-4"
                 >
                   <p className="text-[13px] leading-relaxed m-0">
                     <b>{f.payment_id}</b> - {f.payer} -{" "}
@@ -381,7 +407,7 @@ export default function Desk({
                     </GhostBtn>
                   </div>
                   <textarea
-                    className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink mt-2.5"
+                    className="w-full box-border font-sans text-[13px] leading-relaxed px-3 py-2 rounded-none border border-line2 glass-input text-ink mt-2.5"
                     rows={9}
                     placeholder="The chase draft appears here - it asks the payer for the remittance advice and confirms the amount stays unapplied meanwhile."
                     value={st.text}
@@ -404,7 +430,7 @@ export default function Desk({
                   </div>
                   <div className="flex gap-2 items-center flex-wrap mt-2.5">
                     <input
-                      className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-[3px] border border-line2 glass-input text-ink"
+                      className="flex-1 min-w-[200px] box-border font-sans text-[13px] px-3 py-2 rounded-none border border-line2 glass-input text-ink"
                       placeholder="Payer AP email - e.g. ap@payer.com"
                       value={st.to}
                       onChange={(e) =>
@@ -415,7 +441,7 @@ export default function Desk({
                       }
                     />
                     <button
-                      className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 pressable"
+                      className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-50 pressable"
                       disabled={st.busy}
                       onClick={() => sendChase(f)}
                     >
@@ -426,6 +452,73 @@ export default function Desk({
                 </div>
               );
             })}
+          </>
+        )}
+
+        {outbox && (
+          <>
+            <h4 className="font-display text-[14px] font-semibold m-0 mt-2">
+              Outbox
+            </h4>
+            <p className="text-[13px] text-mut leading-relaxed m-0 flex gap-2 items-center flex-wrap">
+              {outbox.configured ? (
+                <Pill kind="ok">
+                  Mailbox configured - sends go out from {outbox.from}
+                </Pill>
+              ) : (
+                <Pill kind="warn">
+                  No mailbox configured - sends are recorded, not sent
+                </Pill>
+              )}
+              <span>
+                Every send from this product is recorded here with its true
+                status - a mail is only ever shown as sent when the mail
+                server accepted it.
+              </span>
+            </p>
+            {outbox.mails.length ? (
+              <DataTable
+                head={
+                  <>
+                    <Th>When (UTC)</Th>
+                    <Th>To</Th>
+                    <Th>Subject</Th>
+                    <Th>Kind</Th>
+                    <Th>Status</Th>
+                  </>
+                }
+              >
+                {outbox.mails.slice(0, 10).map((m, i) => (
+                  <Row key={i}>
+                      <Td>
+                        {(m.created_at || "").slice(5, 16).replace("T", " ")}
+                      </Td>
+                      <Td>{m.to}</Td>
+                      <Td>{m.subject}</Td>
+                      <Td>{m.kind}</Td>
+                      <Td>
+                        <Pill
+                          kind={
+                            m.status === "sent"
+                              ? "ok"
+                              : m.status === "failed"
+                                ? "bad"
+                                : "warn"
+                          }
+                        >
+                          {m.status === "sent"
+                            ? "Sent"
+                            : m.status === "failed"
+                              ? "Failed"
+                              : "Recorded - not sent"}
+                        </Pill>
+                      </Td>
+                  </Row>
+                ))}
+              </DataTable>
+            ) : (
+              <p className="text-[12.5px] text-mut m-0">Nothing sent yet.</p>
+            )}
           </>
         )}
       </div>

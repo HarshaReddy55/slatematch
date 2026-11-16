@@ -97,7 +97,7 @@ export default function Markdown({ md }: { md: string }) {
       blocks.push(
         <pre
           key={key()}
-          className="bg-bg2 border border-line rounded-[3px] p-3 overflow-x-auto my-3"
+          className="bg-bg2 border border-line rounded-none p-3 overflow-x-auto my-3"
         >
           <code className="font-mono text-[12px] leading-relaxed">
             {buf.join("\n")}

@@ -15,7 +15,7 @@ function StatRow({ n }: { n: number }) {
   return (
     <div className={`grid gap-3 grid-cols-2 ${n >= 4 ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="glass-card rounded-md border border-white/[0.11] p-4 flex flex-col gap-2.5">
+        <div key={i} className="glass-card rounded-none border border-line p-4 flex flex-col gap-2.5">
           <Bar w="45%" h={9} />
           <Bar w="65%" h={26} />
           <Bar w="80%" h={9} />
@@ -33,7 +33,7 @@ function PanelShape({
   table?: boolean;
 }) {
   return (
-    <div className="glass-panel rounded-md border border-white/[0.11] p-4 flex flex-col gap-3">
+    <div className="glass-panel rounded-none border border-line p-4 flex flex-col gap-3">
       <Bar w="180px" h={10} />
       {table ? (
         <div className="flex flex-col gap-2">
@@ -58,7 +58,7 @@ function PanelShape({
 
 function FieldRows({ n }: { n: number }) {
   return (
-    <div className="glass-panel rounded-md border border-white/[0.11] p-4 flex flex-col gap-4">
+    <div className="glass-panel rounded-none border border-line p-4 flex flex-col gap-4">
       <Bar w="180px" h={10} />
       {Array.from({ length: n }).map((_, i) => (
         <div key={i} className="flex items-center gap-4">
@@ -117,7 +117,7 @@ export default function ViewSkeleton({ kind }: { kind: SkeletonKind }) {
       )}
       {kind === "chart" && (
         <>
-          <div className="glass-panel rounded-md border border-white/[0.11] p-4 flex flex-col gap-3">
+          <div className="glass-panel rounded-none border border-line p-4 flex flex-col gap-3">
             <Bar w="180px" h={10} />
             <div className="skel" style={{ width: "100%", height: 150 }} />
           </div>

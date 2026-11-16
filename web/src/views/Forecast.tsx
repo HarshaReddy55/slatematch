@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money, type MatchRecord } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   disputeClaims,
   drillRows,
@@ -157,6 +158,8 @@ export default function Forecast({
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   const runWhatif = useCallback((cust: string, shift: number) => {
     if (!cust) return;
@@ -459,8 +462,18 @@ export default function Forecast({
                         <b>{r.priority_score}</b>
                       </Td>
                       <Td className="whitespace-nowrap">
+                        {/* Stage 6 (Item 6): vanilla's Draft
+                            reminder is a white button - a plain
+                            <button class="mini"> with no .mini
+                            rule in livecube.css, so it renders as
+                            the browser's light button face (measured
+                            #efefef on black, radius 0) and stands
+                            out as the highlightable element. The
+                            Stage 5 compact ghost button is retired;
+                            .mini-btn in index.css reproduces the
+                            measured face. */}
                         <button
-                          className="inline-flex items-center font-sans text-[12px] font-medium px-2 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer pressable"
+                          className="mini-btn"
                           onClick={() => draftReminder(r.invoice_id)}
                         >
                           Draft reminder
@@ -484,7 +497,7 @@ export default function Forecast({
                     setWiCust(e.target.value);
                     runWhatif(e.target.value, wiShift);
                   }}
-                  className="block mt-1 glass-select border border-line rounded-[3px] px-2 py-2 text-[13px] text-ink"
+                  className="block mt-1 glass-select border border-line rounded-none px-2 py-2 text-[13px] text-ink"
                 >
                   {(f.customers || []).map((r) => (
                     <option key={r.customer} value={r.customer}>
@@ -591,7 +604,7 @@ export default function Forecast({
               <label className="block text-[12px] text-mut mt-3">
                 To (accounts payable email)
                 <input
-                  className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-1 block"
+                  className="w-full glass-input border border-line rounded-none px-3 py-2 text-[13.5px] text-ink mt-1 block"
                   placeholder="ap@customer.com"
                   value={mc.to}
                   onChange={(e) => setMc({ ...mc, to: e.target.value })}
@@ -600,13 +613,13 @@ export default function Forecast({
               <label className="block text-[12px] text-mut mt-2.5">
                 Subject
                 <input
-                  className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-1 block"
+                  className="w-full glass-input border border-line rounded-none px-3 py-2 text-[13.5px] text-ink mt-1 block"
                   value={mc.subject}
                   onChange={(e) => setMc({ ...mc, subject: e.target.value })}
                 />
               </label>
               <textarea
-                className="w-full glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink mt-2.5 block"
+                className="w-full glass-input border border-line rounded-none px-3 py-2 text-[13.5px] text-ink mt-2.5 block"
                 rows={9}
                 value={mc.body}
                 onChange={(e) => setMc({ ...mc, body: e.target.value })}

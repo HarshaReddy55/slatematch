@@ -159,7 +159,7 @@ export default function Palette({
       }}
       style={{ background: "rgba(10,10,10,0.55)", backdropFilter: "blur(3px)" }}
     >
-      <div className="glass-pop rounded-md border border-white/[0.11] max-w-[580px] mx-auto mt-[9vh] overflow-hidden">
+      <div className="glass-pop rounded-none border border-line max-w-[580px] mx-auto mt-[9vh] overflow-hidden">
         <input
           ref={inputRef}
           type="text"

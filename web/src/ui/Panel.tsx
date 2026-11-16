@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 
-/** The product's panel surface: true glass since the Stack Glass
-    pass (15 Nov 2026). The recipe lives once in index.css as
-    .glass-panel (translucent panel ground, backdrop blur over the
-    hairline texture and the lit ground, top-edge light line, deep
-    soft shadow; hover deepens the shadow only - the Stage 5 jiggle
-    removal - and the Stage 5B tier lift sets its stops); this
-    component adds the brighter hairline border and the panel's
-    padding and title structure. Tables (DataTable) inherit their
-    glass from this container. */
+/** The product's panel surface. Stage 6 (vanilla fidelity
+    restoration): .glass-panel in index.css now resolves to
+    vanilla's flat panel - background --panel (#2a2a2a), no blur,
+    no gradient, no shadow - and this component adds vanilla's
+    --line border, square corners (livecube.css's Serro pass sets
+    .panel border-radius to 0; measured 0px on the live vanilla
+    app) and the panel's padding and title structure. Tables
+    (DataTable) inherit their surface from this container. */
 export default function Panel({
   title,
   sub,
@@ -22,7 +21,7 @@ export default function Panel({
 }) {
   return (
     <section
-      className={`glass-panel rounded-md border border-white/[0.11] p-4 sm:p-5 ${className}`}
+      className={`glass-panel rounded-none border border-line p-4 sm:p-5 ${className}`}
     >
       {title && (
         <h3 className="font-display text-[15px] font-semibold text-ink m-0">

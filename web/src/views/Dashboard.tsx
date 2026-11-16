@@ -18,8 +18,9 @@ import {
   type Series,
 } from "../lib/dashboard";
 import { useRollUp } from "../lib/useRollUp";
-import { goView, setIntent } from "../lib/operate";
-import { requestShellRefresh } from "../lib/chrome";
+import { goView, setIntent, type WorkspaceOperate } from "../lib/operate";
+import { requestShellRefresh, useWsRefresh } from "../lib/chrome";
+import { StagedGate } from "../ui/Stage3";
 import Panel from "../ui/Panel";
 import Pill from "../ui/Pill";
 import StatCard from "../ui/StatCard";
@@ -130,6 +131,10 @@ export default function Dashboard({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced -
+     the missing half that let a switched case keep the previous
+     case's figures on this view. */
+  useWsRefresh(load);
 
   const dRes = data?.series ? lastDelta(data.series.resolution) : null;
   const dTouch = data?.series ? lastDelta(data.series.touchless) : null;
@@ -171,24 +176,22 @@ export default function Dashboard({
 
         {data && staged && (
           <Rise i={0}>
-            <Panel title="Case staged, waiting to run">
-              <p className="text-sm text-mut mt-1">
-                {data.ws.staged_payments || 0} wires are staged (
-                {money(data.ws.staged_payment_total_cents || 0)}) and nothing
-                has been matched yet. The run settles them against the live
-                ledger.
-              </p>
-              <div className="mt-3">
-                <Button
-                  onClick={() => {
-                    setIntent("slate-run-live", "1");
-                    goView("run");
-                  }}
-                >
-                  ▶ Execute 6-Agent Run Now →
-                </Button>
-              </div>
-            </Panel>
+            {/* Stage 6 (Item 1): vanilla's stagedGateHtml, the
+                shared StagedGate - the Stage 1-5 Panel that stood
+                here carried invented copy and dropped the
+                open-invoices figure and the nothing-is-pre-computed
+                statement, so it was not vanilla's gate. The gate
+                is the primary content of the staged Dashboard; no
+                ribbon, impact or history figures render in this
+                state (the loader finds no runs, so none can). */}
+            <StagedGate
+              where="dashboard figures"
+              ws={data.ws as unknown as WorkspaceOperate}
+              onExecute={() => {
+                setIntent("slate-run-live", "1");
+                goView("run");
+              }}
+            />
           </Rise>
         )}
 
@@ -204,7 +207,19 @@ export default function Dashboard({
                 <Button
                   onClick={async () => {
                     try {
-                      await api("/api/v1/seed", { method: "POST" });
+                      /* Stage 6: the same load path vanilla's
+                         loadCase('seed') takes, so the staged
+                         case carries vanilla's identity ("Demo
+                         case - one realistic day of receipts"),
+                         not the seed endpoint's workspace name. */
+                      await api("/api/v1/cases/seed/load", {
+                        method: "POST",
+                      });
+                      try {
+                        sessionStorage.removeItem("slate-empty");
+                      } catch {
+                        /* ignore */
+                      }
                       requestShellRefresh();
                       load();
                     } catch (e) {
@@ -334,7 +349,7 @@ export default function Dashboard({
                 title="Open the run filtered to the rows this cash is parked on"
               />
             </div>
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mt-4 pt-4 border-t border-white/[0.06]">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mt-4 pt-4 border-t border-line">
               <MiniStat
                 label="Avg solver latency"
                 value={data.ribbon.avgLatencyMs}
@@ -429,6 +444,20 @@ export default function Dashboard({
               </table>
             </RefreshFade>
           </Panel>
+          </Rise>
+        )}
+
+        {data && staged && data.runs.length === 0 && (
+          <Rise i={2}>
+            {/* Vanilla's staged Dashboard still shows the run
+                history panel, with its empty line - the panel's
+                presence is part of the page's organisation. */}
+            <Panel title="Run history" sub="Every batch executed in this workspace, newest first.">
+              <p className="text-[13px] text-mut mt-2 m-0">
+                No runs yet. Load a case or upload payments to create
+                the first run.
+              </p>
+            </Panel>
           </Rise>
         )}
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, authHeaders, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   PARSE_SAMPLE,
   SAMPLE_INV,
@@ -103,7 +104,7 @@ function DropZone({
       role="button"
       tabIndex={0}
       aria-label={label}
-      className={`border border-dashed rounded-md p-5 text-center cursor-pointer text-[13px] text-mut select-none ${
+      className={`border border-dashed rounded-none p-5 text-center cursor-pointer text-[13px] text-mut select-none ${
         over
           ? "border-blue bg-[rgba(61,117,232,0.12)] text-ink shadow-[0_0_0_1px_#3d75e8,0_12px_32px_rgba(61,117,232,0.28)]"
           : "border-line2 hover:border-blue2"
@@ -221,6 +222,8 @@ export default function Upload() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(loadWs, [loadWs]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(loadWs);
 
   const pushQueue = (item: Omit<QueueItem, "id">) => {
     const id = ++queueSeq;
@@ -515,7 +518,7 @@ export default function Upload() {
   const settledCount = (ws?.staged_payments || 0) - pending.length;
 
   const taCls =
-    "w-full box-border font-mono text-[12.5px] leading-relaxed px-3 py-2.5 rounded-[3px] border border-line2 glass-input text-ink mt-3";
+    "w-full box-border font-mono text-[12.5px] leading-relaxed px-3 py-2.5 rounded-none border border-line2 glass-input text-ink mt-3";
 
   return (
     <>
@@ -532,7 +535,7 @@ export default function Upload() {
           forward is one click, at the top of this view. */}
       {pending.length > 0 && (
         <Rise i={0}>
-          <div className="glass-card rounded-md border border-blue/50 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="glass-card rounded-none border border-blue/50 px-4 py-3 flex items-center gap-3 flex-wrap">
             <span className="text-[13.5px]">
               ✓ <b>{pending.length} payments staged ({money(pending.reduce((a, p) => a + p.amount_cents, 0))})</b>{" "}
               - ready to reconcile.
@@ -564,7 +567,7 @@ export default function Upload() {
               {queue.map((q) => (
                 <div
                   key={q.id}
-                  className="glass-card rounded-md border border-white/[0.11] px-3 py-2.5"
+                  className="glass-card rounded-none border border-line px-3 py-2.5"
                 >
                   <div className="flex items-center gap-3 flex-wrap">
                     <b className="text-[13px] break-all">{q.name}</b>
@@ -828,7 +831,7 @@ export default function Upload() {
             <p className="text-[12.5px] text-mut m-0 mt-2">{parseNote}</p>
           )}
           {settledRefs.length > 0 && (
-            <p className="text-[13px] leading-relaxed m-0 mt-2.5 border border-blue/40 bg-[rgba(61,117,232,0.10)] rounded-md px-3 py-2">
+            <p className="text-[13px] leading-relaxed m-0 mt-2.5 border border-blue/40 bg-[rgba(61,117,232,0.10)] rounded-none px-3 py-2">
               True status: {settledRefs.join(" and ")} are flagged below
               because they are no longer open - the run on this workspace
               already settled them. The flags are the verifier comparing
@@ -843,7 +846,7 @@ export default function Upload() {
                   return (
                     <div
                       key={i}
-                      className="glass-card rounded-md border border-white/[0.11] p-3.5"
+                      className="glass-card rounded-none border border-line p-3.5"
                     >
                       <div className="font-display text-[13.5px] font-semibold">
                         {p.stage}
@@ -887,7 +890,7 @@ export default function Upload() {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4 items-start">
-                <div className="glass-card rounded-md border border-white/[0.11] p-4">
+                <div className="glass-card rounded-none border border-line p-4">
                   <h4 className="font-display text-[14px] font-semibold m-0">
                     Structured result
                   </h4>
@@ -928,13 +931,13 @@ export default function Upload() {
                     <summary className="text-[12px] text-mut cursor-pointer">
                       Raw response
                     </summary>
-                    <pre className="font-mono text-[11.5px] leading-relaxed bg-[#0f172a] text-[#dbeafe] p-3.5 rounded-md overflow-auto mt-2 whitespace-pre-wrap break-words">
+                    <pre className="font-mono text-[11.5px] leading-relaxed bg-[#101014] text-[#c3cfe9] p-3.5 rounded-none overflow-auto mt-2 whitespace-pre-wrap break-words">
                       {JSON.stringify(parse, null, 2)}
                     </pre>
                   </details>
                 </div>
 
-                <div className="glass-card rounded-md border border-white/[0.11] p-4">
+                <div className="glass-card rounded-none border border-line p-4">
                   <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
                     The wire
                   </div>
@@ -959,7 +962,7 @@ export default function Upload() {
                     )}
                   </p>
                   {!!pf.deduction_cents && (
-                    <p className="text-[13px] leading-relaxed m-0 mt-2 border border-warn/40 bg-warnbg rounded-md px-3 py-2">
+                    <p className="text-[13px] leading-relaxed m-0 mt-2 border border-warn/40 bg-warnbg rounded-none px-3 py-2">
                       Claimed deduction: <b>-{money(pf.deduction_cents)}</b>
                       {pf.deduction_reason ? ` - ${pf.deduction_reason}` : ""} -
                       the Deduction Agent classifies it at reconcile time, and

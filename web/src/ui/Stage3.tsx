@@ -6,10 +6,12 @@ import Pill from "./Pill";
 /* Shared Stage 3 building blocks, each the React form of one vanilla
    renderer so the two stacks cannot drift apart in wording. */
 
-/** The vanilla .jsonbox: raw JSON evidence, mono, scrollable. */
+/** The vanilla .jsonbox: raw JSON evidence, mono, scrollable.
+    Stage 6: vanilla's exact box - background #101014, text
+    #c3cfe9, --line border, square corners. */
 export function JsonBox({ text }: { text: string }) {
   return (
-    <pre className="font-mono text-[12px] leading-relaxed bg-black/35 border border-white/[0.08] rounded-md p-3 overflow-auto max-h-[420px] whitespace-pre-wrap break-words m-0">
+    <pre className="font-mono text-[12px] leading-relaxed bg-[#101014] text-[#c3cfe9] border border-line rounded-none p-3 overflow-auto max-h-[420px] whitespace-pre-wrap break-words m-0">
       {text}
     </pre>
   );
@@ -113,7 +115,10 @@ export function StagedGate({
 }) {
   if (!ws.case) return null;
   return (
-    <div className="glass-card rounded-md border border-blue/50 p-4">
+    /* Stage 6: vanilla's .gatecard exactly - --line border,
+       --panel background, 18px padding, square corners (the
+       Stage 3 blue-tinted glass card was a React invention). */
+    <div className="rounded-none border border-line bg-panel p-[18px]">
       <b>Waiting for the reconciliation run.</b>
       <p className="text-[13px] text-mut leading-relaxed mt-1.5 mb-2.5">
         The {where} for <b className="text-ink">{ws.case.name}</b> are
@@ -123,7 +128,7 @@ export function StagedGate({
         wires ({money(ws.staged_payment_total_cents || 0)}) are waiting.
       </p>
       <button
-        className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer pressable"
+        className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer pressable"
         onClick={onExecute}
       >
         ▶ Execute 6-Agent Run Now →
@@ -144,7 +149,7 @@ export function GhostBtn({
 }) {
   return (
     <button
-      className="inline-flex items-center gap-2 font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-50 disabled:cursor-default pressable"
+      className="inline-flex items-center gap-2 font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-50 disabled:cursor-default pressable"
       onClick={onClick}
       disabled={disabled}
     >
@@ -169,7 +174,7 @@ export function PrimaryBtn({
   return (
     <button
       id={id}
-      className="inline-flex items-center gap-2 font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-50 disabled:cursor-default pressable"
+      className="inline-flex items-center gap-2 font-sans text-[13px] font-medium px-3.5 py-2 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-50 disabled:cursor-default pressable"
       onClick={onClick}
       disabled={disabled}
     >

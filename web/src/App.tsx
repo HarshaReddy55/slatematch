@@ -13,6 +13,8 @@ import Eval from "./views/Eval";
 import Health from "./views/Health";
 import { NAV_SPRING } from "./ui/motion";
 import Casebar from "./ui/Casebar";
+import CaseBrief from "./ui/CaseBrief";
+import WorkspaceBlock from "./ui/WorkspaceBlock";
 import RunDiff from "./ui/RunDiff";
 import Palette, { type PaletteActions } from "./ui/Palette";
 import Copilot from "./ui/Copilot";
@@ -49,7 +51,14 @@ import { setIntent } from "./lib/operate";
    sits - the casebar's Latest run cell (and the Run view's
    Compare runs button) toggle it here via the
    slate:toggle-run-diff event, on top of whichever view is
-   showing; the Run view no longer renders its own copy. */
+   showing; the Run view no longer renders its own copy.
+   Stage 6 (vanilla fidelity restoration): the sidebar gains
+   vanilla's workspace block (tenant selector + session chip,
+   ui/WorkspaceBlock) under the brand, the nav carries vanilla's
+   group labels (OPERATE / INSIGHT & GOVERNANCE / EVALS &
+   ARCHITECTURE), and the case brief (ui/CaseBrief) takes its
+   vanilla place in the content column - casebar, then brief,
+   then run-diff, then the view. */
 
 export type ViewKey =
   | "dash"
@@ -64,18 +73,24 @@ export type ViewKey =
   | "eval"
   | "health";
 
-const VIEWS: { key: ViewKey; num: string; label: string }[] = [
-  { key: "dash", num: "01", label: "Dashboard" },
-  { key: "cases", num: "02", label: "Use Cases" },
-  { key: "upload", num: "03", label: "Upload Center" },
-  { key: "run", num: "04", label: "Run Reconciliation" },
-  { key: "sap", num: "05", label: "SAP BAPI & EBRR" },
-  { key: "ledger", num: "06", label: "Ledger" },
-  { key: "forecast", num: "07", label: "Forecast and Collections" },
-  { key: "mail", num: "08", label: "Outbound Mail Hub" },
-  { key: "policy", num: "09", label: "Policy Studio" },
-  { key: "eval", num: "10", label: "Evaluations" },
-  { key: "health", num: "11", label: "Agent Health" },
+/* Stage 6: grp carries vanilla's navrow group labels (index.html
+   nav: OPERATE / INSIGHT & GOVERNANCE / EVALS & ARCHITECTURE).
+   Vanilla's group 3 also holds Methodology, Architecture and
+   Product Thinking; those are not React views (Stage 4 scope -
+   they stay reachable in the vanilla app), recorded in
+   STAGE6.md's register. */
+const VIEWS: { key: ViewKey; num: string; label: string; grp: string }[] = [
+  { key: "dash", num: "01", label: "Dashboard", grp: "OPERATE" },
+  { key: "cases", num: "02", label: "Use Cases", grp: "OPERATE" },
+  { key: "upload", num: "03", label: "Upload Center", grp: "OPERATE" },
+  { key: "run", num: "04", label: "Run Reconciliation", grp: "OPERATE" },
+  { key: "sap", num: "05", label: "SAP BAPI & EBRR", grp: "OPERATE" },
+  { key: "ledger", num: "06", label: "Ledger", grp: "INSIGHT & GOVERNANCE" },
+  { key: "forecast", num: "07", label: "Forecast and Collections", grp: "INSIGHT & GOVERNANCE" },
+  { key: "mail", num: "08", label: "Outbound Mail Hub", grp: "INSIGHT & GOVERNANCE" },
+  { key: "policy", num: "09", label: "Policy Studio", grp: "INSIGHT & GOVERNANCE" },
+  { key: "eval", num: "10", label: "Evaluations", grp: "EVALS & ARCHITECTURE" },
+  { key: "health", num: "11", label: "Agent Health", grp: "EVALS & ARCHITECTURE" },
 ];
 
 function fromHash(): ViewKey {
@@ -83,8 +98,14 @@ function fromHash(): ViewKey {
   return (VIEWS.some((v) => v.key === h) ? h : "dash") as ViewKey;
 }
 
+/* Stage 6: the footer buttons take vanilla's own shapes - the
+   docs and key buttons are 999px pills in livecube.css
+   (#docs-btn / #key-btn), the menu button (#cmdk-btn) is in the
+   Serro pass's radius-0 list. */
 const shellBtn =
-  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-[7px] rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap w-full text-left";
+  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-[7px] rounded-[999px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap w-full text-left";
+const shellBtnSquare =
+  "font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-[7px] rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap w-full text-left";
 
 export default function App() {
   const [view, setView] = useState<ViewKey>(fromHash);
@@ -151,6 +172,11 @@ export default function App() {
     seedAndRun: () => {
       api("/api/v1/seed", { method: "POST" })
         .then(() => {
+          try {
+            sessionStorage.removeItem("slate-empty");
+          } catch {
+            /* ignore */
+          }
           setIntent("slate-run-live", "1");
           go("run");
           requestShellRefresh(true);
@@ -202,6 +228,11 @@ export default function App() {
     resetWorkspace: () => {
       api("/api/v1/workspace/reset", { method: "POST" })
         .then(() => {
+          try {
+            sessionStorage.setItem("slate-empty", "1");
+          } catch {
+            /* ignore */
+          }
           toast("Workspace cleared - nothing is staged. Load a case to begin.");
           requestShellRefresh(true);
         })
@@ -214,7 +245,7 @@ export default function App() {
   return (
     <main className="min-h-screen text-ink font-sans">
       <div className="flex flex-col lg:flex-row lg:items-start">
-        <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-white/[0.11] lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
+        <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-line lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
           <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-2.5 shrink-0">
             <div>
               <div className="font-display text-[17px] font-bold leading-none tracking-[0.01em]">
@@ -225,7 +256,7 @@ export default function App() {
               </div>
             </div>
             <button
-              className="lg:hidden font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent cursor-pointer whitespace-nowrap"
+              className="lg:hidden font-sans text-[11px] font-medium tracking-[0.04em] px-2.5 py-1.5 rounded-none border border-line2 text-ink bg-transparent cursor-pointer whitespace-nowrap"
               aria-expanded={phoneOpen}
               aria-label="Toggle sidebar"
               onClick={() => setPhoneOpen((o) => !o)}
@@ -237,47 +268,57 @@ export default function App() {
           <div
             className={`${phoneOpen ? "block" : "hidden"} lg:block lg:flex-1 lg:min-h-0 lg:overflow-y-auto`}
           >
+            <WorkspaceBlock toast={toast} />
             <nav
               aria-label="Views"
               className="flex flex-col px-2.5 pb-2"
             >
-              {VIEWS.map((v) => {
+              {VIEWS.map((v, i) => {
                 const active = view === v.key;
+                const grpHead = i === 0 || VIEWS[i - 1].grp !== v.grp;
                 return (
-                  <button
-                    key={v.key}
-                    onClick={() => {
-                      go(v.key);
-                      setPhoneOpen(false);
-                    }}
-                    aria-current={active ? "page" : undefined}
-                    className={`relative w-full text-left font-sans text-[13px] px-3 py-[6px] rounded-[3px] border cursor-pointer bg-transparent ${
-                      active
-                        ? "border-blue text-white font-medium"
-                        : "border-transparent text-mut hover:text-ink"
-                    }`}
-                  >
-                    {active && (
-                      <motion.span
-                        layoutId="view-pill"
-                        className="absolute inset-0 bg-blue rounded-[3px]"
-                        transition={pillTransition}
-                      />
+                  <div key={v.key} className="flex flex-col">
+                    {grpHead && (
+                      <div className="font-mono text-[9.5px] tracking-[0.12em] text-mut2 px-[10px] pt-2.5 pb-[3px]">
+                        {v.grp}
+                      </div>
                     )}
-                    <span className="relative z-10 flex items-baseline">
-                      <motion.span
-                        className="font-mono text-[10.5px] mr-1.5 inline-block"
-                        initial={false}
-                        animate={{
-                          scale: active ? 1.18 : 1,
-                        }}
-                        transition={pillTransition}
-                      >
-                        {v.num}
-                      </motion.span>
-                      {v.label}
-                    </span>
-                  </button>
+                    <button
+                      onClick={() => {
+                        go(v.key);
+                        setPhoneOpen(false);
+                      }}
+                      aria-current={active ? "page" : undefined}
+                      className={`relative w-full text-left font-sans text-[13px] px-3 py-[6px] rounded-none border cursor-pointer bg-transparent ${
+                        active
+                          ? "border-blue text-white font-medium"
+                          : "border-transparent text-mut hover:text-ink"
+                      }`}
+                    >
+                      {active && (
+                        <motion.span
+                          layoutId="view-pill"
+                          className="absolute inset-0 bg-blue rounded-none"
+                          transition={pillTransition}
+                        />
+                      )}
+                      <span className="relative z-10 flex items-baseline">
+                        <motion.span
+                          className={`font-mono text-[10.5px] mr-1.5 inline-block ${
+                            active ? "" : "text-mut2"
+                          }`}
+                          initial={false}
+                          animate={{
+                            scale: active ? 1.18 : 1,
+                          }}
+                          transition={pillTransition}
+                        >
+                          {v.num}
+                        </motion.span>
+                        {v.label}
+                      </span>
+                    </button>
+                  </div>
                 );
               })}
             </nav>
@@ -286,7 +327,7 @@ export default function App() {
           <div
             className={`${phoneOpen ? "block" : "hidden"} lg:block shrink-0`}
           >
-            <div className="flex flex-col gap-1.5 px-4 py-2 border-t border-white/[0.08]">
+            <div className="flex flex-col gap-1.5 px-4 py-2 border-t border-line">
               <button className={shellBtn} onClick={() => setDocsOpen(true)} title="Read the product documents that ship in the repository (PRD, architecture, go-to-market)">
                 PRODUCT DOCS
               </button>
@@ -294,7 +335,7 @@ export default function App() {
                 {hasKey ? "ACCESS KEY: SET" : "ACCESS KEY"}
               </button>
               <button
-                className={shellBtn}
+                className={shellBtnSquare}
                 onClick={() => setPaletteOpen(true)}
                 title="Menu - jump to any view or action (Ctrl or Cmd + K)"
                 aria-label="Open menu"
@@ -308,6 +349,7 @@ export default function App() {
         <div className="flex-1 min-w-0 w-full">
           <div className="max-w-[1180px] mx-auto px-5 py-6 flex flex-col gap-4">
             <Casebar view={view} toast={toast} />
+            <CaseBrief view={view} />
             {diffOpen && <RunDiff onClose={() => setDiffOpen(false)} />}
             {view === "dash" && <Dashboard toast={toast} />}
             {view === "cases" && <Cases />}
@@ -340,8 +382,8 @@ export default function App() {
 
       {toastMsg && (
         <div
-          className="glass-pop fixed left-1/2 bottom-6 z-[80] rounded-full border border-white/[0.11] px-4 py-2 text-[13px] text-ink"
-          style={{ transform: "translateX(-50%)" }}
+          className="glass-pop fixed left-1/2 bottom-6 z-[80] rounded-none border border-line px-4 py-2 text-[13px] text-ink"
+          style={{ transform: "translateX(-50%)", background: "#2b2b2b" }}
           role="status"
         >
           {toastMsg}

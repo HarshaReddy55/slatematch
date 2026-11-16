@@ -88,7 +88,7 @@ export default function Copilot() {
         onClick={() => setOpen((o) => !o)}
         title="Ask the assistant - answers only from this workspace's records"
         aria-label="Open assistant chat"
-        className="fixed right-[22px] bottom-[22px] z-[60] w-[52px] h-[52px] rounded-full bg-blue border-0 cursor-pointer flex items-center justify-center shadow-[0_10px_28px_rgba(0,0,0,0.45)] pressable"
+        className="fixed right-[22px] bottom-[22px] z-[60] w-[52px] h-[52px] rounded-[50%] bg-blue border-0 cursor-pointer flex items-center justify-center shadow-[0_10px_28px_rgba(0,0,0,0.45)] pressable"
       >
         <svg
           width="26"
@@ -107,7 +107,7 @@ export default function Copilot() {
 
       {open && (
         <div
-          className="glass-pop fixed right-[22px] bottom-[86px] z-[60] w-[392px] max-w-[calc(100vw-32px)] max-h-[min(72vh,640px)] rounded-md border border-white/[0.11] flex flex-col"
+          className="glass-pop fixed right-[22px] bottom-[86px] z-[60] w-[392px] max-w-[calc(100vw-32px)] max-h-[min(72vh,640px)] rounded-none border border-line flex flex-col"
           role="dialog"
           aria-label="Assistant"
         >
@@ -121,7 +121,7 @@ export default function Copilot() {
             <button
               onClick={() => setOpen(false)}
               aria-label="Close assistant chat"
-              className="ml-auto shrink-0 w-[26px] h-[26px] bg-transparent border border-line2 text-ink cursor-pointer rounded-[3px]"
+              className="ml-auto shrink-0 w-[26px] h-[26px] bg-transparent border border-line2 text-ink cursor-pointer rounded-none"
             >
               ✕
             </button>
@@ -136,7 +136,7 @@ export default function Copilot() {
                 <button
                   key={q}
                   onClick={() => ask(q)}
-                  className="font-sans text-[12px] px-2.5 py-1.5 rounded-full border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer text-left"
+                  className="font-sans text-[12px] px-2.5 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer text-left"
                 >
                   {q}
                 </button>
@@ -178,7 +178,7 @@ export default function Copilot() {
               ))}
               {pending && (
                 <div className="flex">
-                  <span className="inline-flex items-center gap-2 border border-line2 rounded-full pl-1.5 pr-3 py-1 text-[12.5px] text-mut">
+                  <span className="inline-flex items-center gap-2 border border-line2 rounded-[2px] pl-1.5 pr-3 py-1 text-[12.5px] text-mut">
                     <Orb state="listening" size={30} label="Thinking" />
                     Thinking...
                   </span>
@@ -188,7 +188,7 @@ export default function Copilot() {
           </div>
 
           <div className="p-3 border-t border-white/[0.08]">
-            <div className="flex items-center gap-2 glass-input border border-line rounded-[6px] px-3 py-1.5 focus-within:border-blue">
+            <div className="flex items-center gap-2 glass-input border border-line rounded-none px-3 py-1.5 focus-within:border-blue">
               <input
                 ref={inputRef}
                 type="text"
@@ -204,7 +204,7 @@ export default function Copilot() {
                 onClick={() => ask()}
                 title="Ask"
                 aria-label="Ask"
-                className="shrink-0 w-[30px] h-[30px] rounded-[4px] bg-blue text-white border-0 cursor-pointer text-[15px] leading-none pressable"
+                className="shrink-0 w-[30px] h-[30px] rounded-[50%] bg-blue text-white border-0 cursor-pointer text-[15px] leading-none pressable"
               >
                 ↑
               </button>

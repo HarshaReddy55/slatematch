@@ -109,7 +109,7 @@ export default function KeyModal({
       aria-label="Access key"
     >
       <div className="absolute inset-0 bg-black/55" />
-      <div className="glass-pop relative rounded-md border border-white/[0.11] p-5 mt-[14vh] w-[min(480px,92vw)]">
+      <div className="glass-pop relative rounded-[6px] border border-line p-5 mt-[14vh] w-[min(480px,92vw)]">
         <h3 className="font-display text-[16px] font-semibold m-0">
           Access key
         </h3>
@@ -126,26 +126,26 @@ export default function KeyModal({
           }}
           placeholder="Paste your API key"
           autoComplete="off"
-          className="w-full glass-input border border-line rounded-[3px] px-3 py-2.5 text-[13.5px] text-ink"
+          className="w-full glass-input border border-line rounded-none px-3 py-2.5 text-[13.5px] text-ink"
         />
         {note && <p className="text-[12.5px] text-warn mb-0 mt-2">{note}</p>}
         <div className="flex gap-2 mt-4 justify-end">
           {hasKey && (
             <button
-              className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer"
+              className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer"
               onClick={remove}
             >
               Remove key
             </button>
           )}
           <button
-            className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer"
+            className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer"
             onClick={onClose}
           >
             Cancel
           </button>
           <button
-            className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer"
+            className="font-sans text-[12.5px] font-medium px-3 py-1.5 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer"
             onClick={save}
           >
             Save key

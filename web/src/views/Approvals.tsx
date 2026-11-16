@@ -348,7 +348,7 @@ export default function Approvals({
       <AnimatePresence>
         {selSolved.length > 0 && (
           <motion.div
-            className="glass-pop fixed bottom-6 left-1/2 z-40 flex items-center gap-3 pl-5 pr-2 py-2 rounded-full border border-white/[0.14]"
+            className="glass-pop fixed bottom-6 left-1/2 z-40 flex items-center gap-3 pl-5 pr-2 py-2 rounded-none border border-line"
             style={{ x: "-50%" }}
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
             animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}

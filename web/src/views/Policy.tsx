@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
-import { requestShellRefresh, type WorkspaceFull } from "../lib/chrome";
+import { requestShellRefresh, type WorkspaceFull, useWsRefresh } from "../lib/chrome";
 import { goView } from "../lib/operate";
 import Panel from "../ui/Panel";
 import ViewHead, { LoadError } from "../ui/ViewHead";
@@ -162,6 +162,8 @@ export default function Policy({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   /** The request body, identical in shape and values to vanilla's
       policyFormBody: numbers as numbers, cents fields back in exact
@@ -313,7 +315,7 @@ export default function Policy({
                               v ? { ...v, [f.key]: e.target.value } : v
                             )
                           }
-                          className="glass-input border border-line rounded-[3px] px-2.5 py-2 text-[13.5px] text-ink w-full font-mono"
+                          className="glass-input border border-line rounded-none px-2.5 py-2 text-[13.5px] text-ink w-full font-mono"
                         />
                         <p className="text-[12.5px] text-mut leading-relaxed m-0">
                           {f.why}
@@ -331,7 +333,7 @@ export default function Policy({
 
             <div className="flex items-center gap-2 flex-wrap mt-4">
               <button
-                className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-blue text-white bg-blue hover:bg-[#2f66d6] cursor-pointer disabled:opacity-60"
+                className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-none border border-blue text-white bg-blue hover:bg-[#2b5cd7] cursor-pointer disabled:opacity-60"
                 onClick={onSave}
                 disabled={!!busy}
               >
@@ -340,7 +342,7 @@ export default function Policy({
                   : "Save policy"}
               </button>
               <button
-                className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-60"
+                className="font-sans text-[13px] font-medium px-3.5 py-2 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-60"
                 onClick={onPreview}
                 disabled={!!busy}
               >
@@ -355,7 +357,7 @@ export default function Policy({
             {preview &&
               (preview.base_run_id ? (
                 <div
-                  className="rounded-md border border-blue mt-4 p-3.5"
+                  className="rounded-none border border-blue mt-4 p-3.5"
                   style={{ background: "rgba(61,117,232,.14)" }}
                 >
                   <p className="m-0 text-[13.5px] leading-relaxed">

@@ -43,7 +43,7 @@ export default function SlideOver({
           className="absolute inset-0 bg-black/55 cursor-pointer border-0"
           onClick={onClose}
         />
-        <div className={`glass-pop absolute right-0 top-0 h-full ${width} overflow-y-auto border-l border-white/[0.11] p-5`}>
+        <div className={`glass-pop absolute right-0 top-0 h-full ${width} overflow-y-auto border-l border-line p-5`}>
           <SlideHead title={title} onClose={onClose} />
           {children}
         </div>
@@ -64,7 +64,7 @@ export default function SlideOver({
             onClick={onClose}
           />
           <motion.div
-            className={`glass-pop absolute right-0 top-0 h-full ${width} overflow-y-auto border-l border-white/[0.11] p-5`}
+            className={`glass-pop absolute right-0 top-0 h-full ${width} overflow-y-auto border-l border-line p-5`}
             initial={{ x: 48, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 48, opacity: 0 }}
@@ -86,7 +86,7 @@ function SlideHead({ title, onClose }: { title: string; onClose: () => void }) {
         {title}
       </h3>
       <button
-        className="font-sans text-[13px] font-medium px-3 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer pressable"
+        className="font-sans text-[13px] font-medium px-3 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer pressable"
         onClick={onClose}
       >
         Close

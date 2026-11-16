@@ -468,15 +468,78 @@ def test_stage4_shell_mounts_chrome_and_policy():
 
 
 def test_stage4_casebar_full_ids_and_verdict_only_brief():
+    # Stage 6 supersedes the Stage 4 half of this contract (Harsha's
+    # Item 2): the verdict-only strip inside the casebar is gone -
+    # vanilla's casebar carries no verdict - and the full brief is
+    # its own panel (ui/CaseBrief.tsx) directly under the strip,
+    # with the mini tiles, the shutter toggle and the slate-brief
+    # persistence. The Stage 4 run-id rule below is unchanged.
     bar = _web_src("ui/Casebar.tsx")
     # the run id is never sliced in the React casebar
     assert "run_id" in bar and ".slice(0, 13)" not in bar
-    # the brief strip carries the verdict line only, no mini tiles
-    assert 'aria-label="Case brief"' in bar
+    # the verdict no longer lives in the casebar (no duplication:
+    # the brief panel below it carries the verdict in both modes)
+    assert 'aria-label="Case brief"' not in bar
     for tile in ("AUTO-POSTED CASH", "EXPECTED BACK FROM DISPUTES"):
         assert tile not in bar, tile
+    brief = _web_src("ui/CaseBrief.tsx")
+    assert 'aria-label="Case brief"' in brief
+    assert "Full brief" in brief and "Minimize" in brief
+    assert '"slate-brief"' in brief or "'slate-brief'" in brief or "slate-brief" in brief
+    for tile in ("Auto-posted cash", "Expected back from disputes", "Held for a person"):
+        assert tile in brief, tile
+    assert "Staged portfolio readiness" in brief
+    assert "Not run yet - run this case from Run Reconciliation" in brief
+    lib = _web_src("lib/brief.ts")
+    assert "posted themselves" in lib and "waiting for a person" in lib
+
+
+def test_stage6_vanilla_fidelity_restoration():
+    # Item 1: every view that reads workspace/run state reloads on
+    # slate:ws-refresh (vanilla blanks and re-reads on load; React
+    # views otherwise kept the previous case's figures standing).
     chrome = _web_src("lib/chrome.ts")
-    assert "posted themselves" in chrome and "waiting for a person" in chrome
+    assert "useWsRefresh" in chrome and "slate:ws-refresh" in chrome
+    for view in ("Dashboard", "Sap", "Ledger", "Forecast", "Mail",
+                 "Policy", "Eval", "Health", "Upload"):
+        assert "useWsRefresh" in _web_src(f"views/{view}.tsx"), view
+    # Item 1: the Dashboard gate is vanilla's stagedGateHtml via the
+    # shared component; the invented Stage 1-5 gate copy is gone.
+    dash = _web_src("views/Dashboard.tsx")
+    assert "StagedGate" in dash
+    assert "Case staged, waiting to run" not in dash
+    assert "The run settles them against the live ledger" not in dash
+    # Item 1: bootAuto restored in the casebar (stage the demo on a
+    # first visit to an empty workspace; respect a deliberate reset).
+    bar = _web_src("ui/Casebar.tsx")
+    assert "/api/v1/cases/seed/load" in bar and "slate-empty" in bar
+    # Item 5: the tenant selector and session chip live in the
+    # sidebar workspace block, not the casebar.
+    assert "/api/v1/tenants/demo" not in bar
+    wb = _web_src("ui/WorkspaceBlock.tsx")
+    assert "/api/v1/tenants/demo" in wb and "SESSION " in wb
+    # Item 7c: vanilla's nav group labels on the sidebar nav, and
+    # the shell order is casebar, brief, run-diff (vanilla's DOM).
+    app = _web_src("App.tsx")
+    for grp in ("OPERATE", "INSIGHT & GOVERNANCE", "EVALS & ARCHITECTURE"):
+        assert grp in app, grp
+    assert app.index("<Casebar") < app.index("<CaseBrief") < app.index("{diffOpen && <RunDiff")
+    # Item 4: vanilla's exact palette is back; the Stage 5B/5C
+    # lifted tones are gone from the theme.
+    css = _web_src("index.css")
+    for token in ("--color-blue: #3d75e8", "--color-mut: #a7a49d",
+                  "--color-mut2: #7e7c77", "--color-ok: #34bf71",
+                  "--color-bad: #e5484d"):
+        assert token in css, token
+    for lifted in ("#3570e0", "#c4c1ba", "#c2c0ba", "#5eeaa0", "#ff9ea0"):
+        assert lifted not in css, lifted
+    # Item 6: the Draft reminder takes the measured white .mini-btn
+    # face in Forecast.
+    assert ".mini-btn" in css and "#efefef" in css
+    assert 'className="mini-btn"' in _web_src("views/Forecast.tsx")
+    # Item 7: "Stage Case (Inspect Before Run)" lands on the
+    # Dashboard, as vanilla's loadCase does.
+    assert 'goView("dash")' in _web_src("views/Cases.tsx")
 
 
 def test_stage4_palette_two_groups():

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, money, type MatchRecord, type RunSummary } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   gradeCase,
   normalisedStored,
@@ -142,6 +143,8 @@ export default function Eval() {
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   const ev = data?.ev;
 
@@ -256,7 +259,7 @@ export default function Eval() {
             ).map(([label, v, note]) => (
               <div
                 key={label}
-                className="glass-card rounded-md border border-white/[0.11] p-4"
+                className="glass-card rounded-none border border-line p-4"
               >
                 <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
                   {label}

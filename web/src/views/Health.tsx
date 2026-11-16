@@ -19,6 +19,7 @@ import {
   type ReadyData,
 } from "../lib/insight";
 import { goView, setIntent } from "../lib/operate";
+import { useWsRefresh } from "../lib/chrome";
 import Panel from "../ui/Panel";
 import Pill, { type PillKind } from "../ui/Pill";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
@@ -59,7 +60,7 @@ function MiniCard({
   note: string;
 }) {
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-4 min-w-0">
+    <div className="glass-card rounded-none border border-line p-4 min-w-0">
       <div className="font-mono text-[10.5px] tracking-[0.07em] uppercase text-mut">
         {label}
       </div>
@@ -108,6 +109,8 @@ export default function Health() {
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
+  /* Stage 6 (Item 1): reload when the workspace is replaced. */
+  useWsRefresh(load);
 
   const h = data?.h;
   const m = h?.model_metrics || {};
@@ -179,7 +182,7 @@ export default function Health() {
                   signature={`${chrono.length}:${chrono[chrono.length - 1]?.run_id ?? ""}`}
                 >
                 <div
-                  className="flex items-stretch gap-[3px] mt-3 p-[3px] rounded-[3px]"
+                  className="flex items-stretch gap-[3px] mt-3 p-[3px] rounded-none"
                   role="list"
                   style={{ background: "rgba(255,255,255,0.03)" }}
                 >

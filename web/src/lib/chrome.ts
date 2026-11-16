@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { api, authHeaders, type MatchRecord } from "./api";
 import type { WorkspaceOperate } from "./operate";
 
@@ -55,64 +56,37 @@ export function requestShellRefresh(force = false) {
   }
 }
 
-/* ---------------- case brief verdict (state.js briefOutcome +
-   fillBriefMini) ---------------- */
-
-interface ExceptionRow {
-  payment_id: string;
-  kind: string;
+/** Stage 6 (Item 1): the view-side half of the refresh contract.
+    Vanilla never lets a mounted page keep a replaced workspace's
+    figures: loadCase blanks every run surface synchronously and
+    the WS_GEN guard makes each loader re-read. React views load
+    once on mount, so until this hook existed a case switched from
+    the casebar left the PREVIOUS case's run figures standing on
+    the Dashboard of the new, merely-staged case - Harsha's
+    "selecting case itself is running the data". Every view that
+    reads workspace or run state subscribes its loader here; the
+    shell dispatchers (casebar switch / reset / save, palette,
+    session restore) already fire the event. */
+export function useWsRefresh(load: () => void) {
+  useEffect(() => {
+    const on = () => load();
+    window.addEventListener("slate:ws-refresh", on);
+    return () => window.removeEventListener("slate:ws-refresh", on);
+  }, [load]);
 }
 
-const KINDLBL: Record<string, string> = {
-  DUPLICATE_PAYMENT: "a duplicate wire",
-  NO_MATCH: "no matching invoices",
-  UNRESOLVED_RESIDUAL: "an unexplained remainder",
-};
+/* ---------------- case brief (state.js briefOutcome +
+   fillBriefMini) ----------------
 
-/** The brief mini-strip verdict, computed exactly as vanilla's
-    briefOutcome: merge the matches and exceptions of the last 10
-    completed runs, one entry per payment, most recent decision
-    wins. Returns the line to show, or null when there is no case. */
-export async function briefVerdict(ws: WorkspaceFull): Promise<string | null> {
-  if (!ws.case) return null;
-  const lr = ws.latest_run;
-  if (!lr) return "Not run yet - run this case from Run Reconciliation and the outcome appears here.";
-  const runs = await api<{ run_id: string; status?: string }[]>("/api/v1/runs");
-  const target = runs.find((r) => r.run_id === lr.run_id);
-  if (target && target.status && target.status !== "COMPLETED") {
-    return "Counting this run's outcomes...";
-  }
-  const completed = runs
-    .filter((r) => !r.status || r.status === "COMPLETED")
-    .reverse()
-    .slice(-10);
-  const fetched = await Promise.all(
-    completed.map(async (run) => {
-      const [msRaw, xsRaw] = await Promise.all([
-        api<MatchRecord[] | Record<string, unknown>>(`/api/v1/runs/${run.run_id}/matches`),
-        api<ExceptionRow[] | Record<string, unknown>>(`/api/v1/runs/${run.run_id}/exceptions`),
-      ]);
-      return { ms: asArray<MatchRecord>(msRaw, "matches"), xs: asArray<ExceptionRow>(xsRaw, "exceptions") };
-    })
-  );
-  const byPay = new Map<string, MatchRecord>();
-  const excByPay = new Map<string, ExceptionRow>();
-  for (const { ms, xs } of fetched) {
-    for (const m of ms) byPay.set(m.payment_id, m);
-    for (const x of xs) excByPay.set(x.payment_id, x);
-  }
-  let held = 0;
-  let auto = 0;
-  for (const m of byPay.values()) {
-    if (m.status === "AUTO_POSTED" || m.status === "APPROVED_POSTED") auto++;
-    if (m.status === "PROPOSED") held++;
-  }
-  const stopped = [...excByPay.entries()].filter(([pid]) => !byPay.has(pid));
-  const total = new Set([...byPay.keys(), ...excByPay.keys()]).size;
-  return `${total} payments in: ${auto} posted themselves, ${held} waiting for a person${
-    stopped.length ? `, ${stopped.length} stopped before matching` : ""
-  }.`;
-}
+   Stage 6: the brief computation moved to lib/brief.ts, which
+   ports briefOutcome in full (verdict, cash, recovery, held -
+   every figure the brief renders), and the brief itself is
+   ui/CaseBrief.tsx. The Stage 4 verdict-only port that lived
+   here fed the casebar's verdict strip; Stage 6 removes that
+   strip (vanilla's casebar carries no verdict - the brief panel
+   under it carries the verdict in both its modes), so nothing
+   consumes a verdict-only computation any more. copilotSuggestions
+   below still uses the ExceptionRow shape; it is declared there. */
 
 /* ---------------- exports (state.js downloadExport) ---------------- */
 
@@ -142,6 +116,11 @@ export async function downloadExport(
 }
 
 /* ---------------- Copilot (assist.js renderSuggestions + ask) -------- */
+
+interface ExceptionRow {
+  payment_id: string;
+  kind: string;
+}
 
 export interface CopilotReply {
   answer: string;

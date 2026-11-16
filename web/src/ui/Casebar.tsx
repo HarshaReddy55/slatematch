@@ -8,12 +8,12 @@ import {
 import { createPortal } from "react-dom";
 import { api } from "../lib/api";
 import {
-  briefVerdict,
   downloadExport,
   fmtLoadedAt,
   requestShellRefresh,
   type WorkspaceFull,
 } from "../lib/chrome";
+import { invalidateBrief } from "../lib/brief";
 import { goView, setIntent, toggleRunDiffPanel } from "../lib/operate";
 
 /* Stage 4 shell: the casebar and the brief mini-strip, ported from
@@ -55,14 +55,20 @@ import { goView, setIntent, toggleRunDiffPanel } from "../lib/operate";
    and Latest run toggles the run comparison in the SHELL,
    directly under this strip (vanilla's #run-diff position),
    instead of opening a copy inside the Run view. The Active
-   case cell stays non-clickable, as in vanilla. */
-
-interface TenantInfo {
-  tenants: { id: string; name: string; erp: string }[];
-  active: string;
-  switching_enabled: boolean;
-  session?: string;
-}
+   case cell stays non-clickable, as in vanilla.
+   Stage 6 (vanilla fidelity restoration): three returns to the
+   vanilla arrangement. (1) The tenant selector moves OUT of the
+   strip into the sidebar's workspace block (ui/WorkspaceBlock),
+   where vanilla's wide layout keeps it; the strip's second row
+   is vanilla's bar2 again - case selector, Export, More.
+   (2) The verdict row leaves the strip: vanilla's casebar
+   carries no verdict, and the brief panel now sits directly
+   under the strip (ui/CaseBrief) carrying the verdict in both
+   its modes - keeping it here too would show it twice.
+   (3) bootAuto is restored: a first visit to an empty workspace
+   stages the demo case (staged only, never run), as vanilla's
+   assist.js bootAuto does; a deliberate Reset sets slate-empty
+   and is respected, and any case load clears it. */
 
 interface ScenarioLite {
   id: string;
@@ -77,12 +83,12 @@ const cellK =
    behind @media (hover:hover)). The negative margins absorb
    the padding so the strip's layout does not move. */
 const cellBtn =
-  "cc-link text-left bg-transparent border-0 px-2 py-1 -mx-2 -my-1 rounded-[3px] cursor-pointer min-w-0";
+  "cc-link text-left bg-transparent border-0 px-2 py-1 -mx-2 -my-1 rounded-none cursor-pointer min-w-0";
 const cellKLink = cellK + " cc-k";
 const ghostBtn =
-  "font-sans text-[12px] font-medium px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap";
+  "font-sans text-[12px] font-medium px-2.5 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer whitespace-nowrap";
 const selectCls =
-  "glass-select border border-line rounded-[3px] px-2 py-1.5 text-[12.5px] text-ink";
+  "glass-select border border-line rounded-none px-2 py-1.5 text-[12.5px] text-ink";
 
 export default function Casebar({
   view,
@@ -92,15 +98,13 @@ export default function Casebar({
   toast: (m: string) => void;
 }) {
   const [ws, setWs] = useState<WorkspaceFull | null>(null);
-  const [verdict, setVerdict] = useState<string | null>(null);
-  const [tenants, setTenants] = useState<TenantInfo | null>(null);
   const [cases, setCases] = useState<ScenarioLite[] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(
     null
   );
   const runSeen = useRef<string | null>(null);
-  const verdictFor = useRef<string | null>(null);
+  const bootDone = useRef(false);
   const menuWrapRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuElRef = useRef<HTMLDivElement>(null);
@@ -146,39 +150,40 @@ export default function Casebar({
   }, [load]);
 
   useEffect(() => {
-    api<TenantInfo>("/api/v1/tenants/demo")
-      .then(setTenants)
-      .catch(() => setTenants(null));
     api<ScenarioLite[]>("/api/v1/scenarios")
       .then((sc) => setCases(Array.isArray(sc) ? sc : []))
       .catch(() => setCases([]));
   }, []);
 
-  // Verdict: computed once per (case, latest run) pair.
+  /* bootAuto (assist.js): an empty workspace greets a first-time
+     visitor with a wall of dashes in vanilla too - so vanilla
+     stages the demo case on first visit, for real, and every
+     number afterwards is counted from that staged portfolio. It
+     NEVER runs it: execution stays an explicit act. A deliberate
+     Reset to empty (slate-empty) is respected for the session. */
   useEffect(() => {
-    if (!ws) return;
-    const key = `${ws.case?.id || "none"}:${ws.latest_run?.run_id || "norun"}`;
-    if (verdictFor.current === key) return;
-    verdictFor.current = key;
-    if (!ws.case) {
-      setVerdict(null);
-      return;
+    if (!ws || bootDone.current) return;
+    bootDone.current = true;
+    try {
+      if (sessionStorage.getItem("slate-empty") === "1") return;
+    } catch {
+      /* ignore */
     }
-    if (!ws.latest_run) {
-      setVerdict(
-        "Not run yet - run this case from Run Reconciliation and the outcome appears here."
-      );
-      return;
-    }
-    setVerdict("Counting this run's outcomes...");
-    briefVerdict(ws)
-      .then((v) => {
-        if (verdictFor.current === key) setVerdict(v);
-      })
-      .catch(() => {
-        if (verdictFor.current === key) setVerdict(null);
-      });
-  }, [ws]);
+    if (ws.case || ws.latest_run || (ws.open_invoices ?? 0) > 0) return;
+    (async () => {
+      try {
+        await api("/api/v1/cases/seed/load", { method: "POST" });
+        invalidateBrief();
+        await load();
+        requestShellRefresh();
+        toast(
+          "Demo case staged - the readiness panel shows the real portfolio. One click on Execute runs the six-agent solver in front of you. Reset to empty (case bar) starts clean."
+        );
+      } catch {
+        /* the views surface their own load errors */
+      }
+    })();
+  }, [ws, load, toast]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -268,9 +273,16 @@ export default function Casebar({
     try {
       await api("/api/v1/workspace/reset", { method: "POST" });
       runSeen.current = null;
-      verdictFor.current = null;
+      // Vanilla resetWorkspace: the deliberate empty is respected
+      // by bootAuto for the rest of the session.
+      try {
+        sessionStorage.setItem("slate-empty", "1");
+      } catch {
+        /* ignore */
+      }
+      invalidateBrief();
       toast("Workspace cleared - nothing is staged. Load a case to begin.");
-      requestShellRefresh();
+      requestShellRefresh(true);
       load();
     } catch (e) {
       toast("Reset failed: " + (e instanceof Error ? e.message : String(e)));
@@ -300,7 +312,14 @@ export default function Casebar({
         run: { auto_posted: number; payments: number } | null;
       }>(`/api/v1/cases/${v}/load`, { method: "POST" });
       runSeen.current = null;
-      verdictFor.current = null;
+      // Vanilla loadCase: a load ends the deliberate-empty state
+      // and invalidates the brief.
+      try {
+        sessionStorage.removeItem("slate-empty");
+      } catch {
+        /* ignore */
+      }
+      invalidateBrief();
       toast(
         d.run
           ? `Case loaded and run: ${d.run.auto_posted} of ${d.run.payments} payments auto-posted`
@@ -314,37 +333,16 @@ export default function Casebar({
     }
   };
 
-  const switchTenant = (id: string) => {
-    if (!id) return;
-    try {
-      localStorage.setItem("slate-tenant", id);
-    } catch {
-      /* ignore */
-    }
-    toast(
-      "Tenant switched - each tenant has its own database, so this workspace shows only that tenant's data"
-    );
-    // The React views cache their own reads; a reload is the honest
-    // way to guarantee no surface keeps the old tenant's figures.
-    setTimeout(() => window.location.reload(), 350);
-  };
-
-  const tenantVal =
-    tenants?.active ||
-    (typeof localStorage !== "undefined"
-      ? localStorage.getItem("slate-tenant") || ""
-      : "");
-
   return (
     <div
-      className="glass-panel rounded-md border border-white/[0.11] px-4 py-2.5"
+      className="bg-panel2 rounded-none border border-line px-4 py-2.5"
       aria-label="Case bar"
     >
       <div className="flex flex-col gap-2">
         <div className="flex flex-col lg:flex-row lg:items-center gap-x-4 gap-y-2">
           <div className="flex-1 min-w-0">
             <div className={cellK}>
-              <span className="inline-block w-[7px] h-[7px] rounded-full bg-ok" />
+              <span className="inline-block w-[7px] h-[7px] rounded-[50%] bg-ok" />
               Active case
             </div>
             <div className="text-[13px] font-medium mt-0.5 leading-snug lg:whitespace-nowrap lg:overflow-hidden lg:text-ellipsis">
@@ -443,38 +441,7 @@ export default function Casebar({
         </div>
 
         <div className="flex flex-col lg:flex-row lg:items-end gap-x-4 gap-y-2">
-          <div className="flex-1 min-w-0">
-            {c && verdict && (
-              <div aria-label="Case brief">
-                <span className="text-[13px] leading-snug">
-                  <b>{verdict}</b>
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
-            <label className="flex items-center gap-2 text-mut text-[10px] tracking-[0.08em]">
-              <select
-                className={selectCls + " w-full lg:w-[264px]"}
-                aria-label="Tenant"
-                value={tenantVal}
-                disabled={tenants ? !tenants.switching_enabled : false}
-                title={
-                  tenants && !tenants.switching_enabled
-                    ? "Tenant switching is off when API keys are issued - the key decides the tenant"
-                    : "Tenant - every tenant has its own database; nothing crosses"
-                }
-                onChange={(e) => switchTenant(e.target.value)}
-              >
-                {(tenants?.tenants || []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} - {t.erp}
-                  </option>
-                ))}
-                {!tenants && <option value="demo">Demo workspace - US - SAP S/4HANA</option>}
-              </select>
-            </label>
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             <select
               className={selectCls + " w-full lg:w-[288px]"}
               value={
@@ -522,7 +489,7 @@ export default function Casebar({
                 createPortal(
                   <div
                     ref={menuElRef}
-                    className="glass-pop fixed z-[62] flex flex-col gap-1 border border-white/[0.11] rounded-md p-2"
+                    className="glass-menu fixed z-[62] flex flex-col gap-1 border border-line rounded-none p-2"
                     style={{
                       left: menuPos?.left ?? 0,
                       top: menuPos?.top ?? 0,

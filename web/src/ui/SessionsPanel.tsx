@@ -112,8 +112,8 @@ export default function SessionsPanel({
   };
 
   const btn =
-    "font-sans text-[13px] font-medium px-3.5 py-2 rounded-[3px] cursor-pointer disabled:opacity-60";
-  const btnPrimary = `${btn} border border-blue text-white bg-blue hover:bg-[#2f66d6]`;
+    "font-sans text-[13px] font-medium px-3.5 py-2 rounded-none cursor-pointer disabled:opacity-60";
+  const btnPrimary = `${btn} border border-blue text-white bg-blue hover:bg-[#2b5cd7]`;
   const btnGhost = `${btn} border border-line2 text-ink bg-transparent hover:border-blue`;
 
   return (
@@ -137,7 +137,7 @@ export default function SessionsPanel({
             placeholder="Enter session ID - e.g. SM-7K2QX-9M4TD"
             autoComplete="off"
             spellCheck={false}
-            className="flex-1 min-w-[240px] glass-input border border-line rounded-[3px] px-3 py-2 text-[13.5px] text-ink font-mono"
+            className="flex-1 min-w-[240px] glass-input border border-line rounded-none px-3 py-2 text-[13.5px] text-ink font-mono"
           />
           <button className={btnGhost} onClick={() => restore()} disabled={!!busy}>
             {busy === "restore" ? "Restoring session..." : "Retrieve session"}
@@ -161,7 +161,7 @@ export default function SessionsPanel({
                       className="flex items-center gap-2.5 flex-wrap py-2 border-b border-white/[0.05] last:border-b-0"
                     >
                       <span
-                        className="inline-block w-[7px] h-[7px] rounded-full bg-ok shrink-0"
+                        className="inline-block w-[7px] h-[7px] rounded-[50%] bg-ok shrink-0"
                         title="Saved and restorable"
                       />
                       <b className="font-mono text-[12.5px]">{s.save_id}</b>
@@ -173,7 +173,7 @@ export default function SessionsPanel({
                         {s.label ? ` - ${s.label}` : ""}
                       </small>
                       <button
-                        className="ml-auto font-sans text-[12px] font-medium px-2.5 py-1.5 rounded-[3px] border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-60"
+                        className="ml-auto font-sans text-[12px] font-medium px-2.5 py-1.5 rounded-none border border-line2 text-ink bg-transparent hover:border-blue cursor-pointer disabled:opacity-60"
                         onClick={() => restore(s.save_id)}
                         disabled={!!busy}
                       >

@@ -73,7 +73,7 @@ export default function RunDiff({ onClose }: { onClose: () => void }) {
   }, [loadSides]);
 
   const selCls =
-    "glass-select border border-line rounded-[3px] px-2 py-1.5 text-[12.5px] text-ink max-w-[280px]";
+    "glass-select border border-line rounded-none px-2 py-1.5 text-[12.5px] text-ink max-w-[280px]";
 
   let changed: { pid: string; from: string; to: string }[] = [];
   if (sides) {
@@ -221,7 +221,7 @@ function DiffCard({
   good?: boolean;
 }) {
   return (
-    <div className="glass-card rounded-md border border-white/[0.11] p-3.5">
+    <div className="glass-card rounded-none border border-line p-3.5">
       <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-mut">
         {label}
       </div>
