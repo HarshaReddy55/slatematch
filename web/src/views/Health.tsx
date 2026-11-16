@@ -44,6 +44,8 @@ interface HealthData {
   heldByRun: Record<string, number>;
   profiles: BehaviourProfile[];
   trend: EvalTrend | null;
+  criteria: CriterionRow[];
+  criteriaNote: string;
 }
 
 interface BehaviourProfile {
@@ -55,6 +57,15 @@ interface BehaviourProfile {
   partial_share: number;
   deduction_share: number;
   duplicates: number;
+}
+
+interface CriterionRow {
+  criterion: string;
+  target: string;
+  actual: number;
+  unit: string;
+  status: "pass" | "watch" | "fail";
+  basis: string;
 }
 
 interface EvalTrend {
@@ -105,7 +116,7 @@ export default function Health() {
         api<HealthFull>("/health"),
         api<ReadyData>("/ready"),
       ]);
-      const [diag, audit, runs, profiles, trend] = await Promise.all([
+      const [diag, audit, runs, profiles, trend, criteriaPack] = await Promise.all([
         api<Diagnostics>("/api/v1/diagnostics").catch(() => null),
         api<AuditEntry[]>("/api/v1/audit").catch(() => [] as AuditEntry[]),
         api<RunSummary[]>("/api/v1/runs").catch(() => [] as RunSummary[]),
@@ -113,6 +124,8 @@ export default function Health() {
           .then((d) => d.profiles || [])
           .catch(() => [] as BehaviourProfile[]),
         api<EvalTrend>("/api/v1/evaluations/trend").catch(() => null),
+        api<{ criteria: CriterionRow[]; note: string }>("/api/v1/success-criteria")
+          .catch(() => ({ criteria: [] as CriterionRow[], note: "" })),
       ]);
       // Held counts come from each run's own matches payload (PROPOSED
       // rows), the same records the Status Bar colour rule reads.
@@ -131,7 +144,11 @@ export default function Health() {
           }
         })
       );
-      setData({ h, r, diag, audit, runs, heldByRun, profiles, trend });
+      setData({
+        h, r, diag, audit, runs, heldByRun, profiles, trend,
+        criteria: criteriaPack.criteria || [],
+        criteriaNote: criteriaPack.note || "",
+      });
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
   useEffect(load, [load]);
@@ -493,6 +510,60 @@ export default function Health() {
           </Rise>
 
           <Rise i={7}>
+          <Panel
+            title="Success criteria - the contract view"
+            sub="The criteria a buyer would hold this product to, computed from this workspace's stored records - never from claims. The note under the table states what the numbers were measured over."
+          >
+            {data.criteria.length ? (
+              <>
+                <DataTable
+                  head={
+                    <>
+                      <Th>Criterion</Th>
+                      <Th>Target</Th>
+                      <Th>Actual</Th>
+                      <Th>Status</Th>
+                      <Th>Basis</Th>
+                    </>
+                  }
+                >
+                  {data.criteria.map((c) => (
+                    <Row key={c.criterion}>
+                      <Td>{c.criterion}</Td>
+                      <Td>{c.target}</Td>
+                      <Td>
+                        <b>
+                          {c.unit.startsWith("share")
+                            ? `${(c.actual * 100).toFixed(1)}%`
+                            : c.actual}
+                        </b>
+                      </Td>
+                      <Td>
+                        <Pill kind={c.status === "pass" ? "ok" : c.status === "fail" ? "bad" : "warn"}>
+                          {c.status.toUpperCase()}
+                        </Pill>
+                      </Td>
+                      <Td>
+                        <span className="block min-w-[220px] whitespace-normal break-words leading-[1.55]">
+                          {c.basis}
+                        </span>
+                      </Td>
+                    </Row>
+                  ))}
+                </DataTable>
+                <p className="text-[12px] text-mut leading-snug m-0 mt-2">
+                  {data.criteriaNote}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">
+                No runs yet to measure against.
+              </p>
+            )}
+          </Panel>
+          </Rise>
+
+          <Rise i={8}>
           <Panel
             title="Audit trail"
             sub="Runs, approvals, rejections and policy changes, written by the server when they occur. Entries cannot be edited from this interface."

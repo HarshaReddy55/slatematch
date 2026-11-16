@@ -63,6 +63,19 @@ interface RunData {
   zeroInvoiceApprovals: Record<string, ApprovalEntry>;
 }
 
+interface ReplayResult {
+  source_run_id: string;
+  changed_count: number;
+  policy_name: string;
+  basis: string;
+  results: {
+    payment_id: string;
+    then_status: string;
+    now_status: string;
+    changed: boolean;
+  }[];
+}
+
 interface Lane {
   pid: string;
   payer: string;
@@ -913,6 +926,48 @@ export default function Run() {
     setTimeout(() => setAuditCopied(false), 2000);
   };
 
+  /* Proof actions (proof pack): replay the shown run in a scratch
+     session under the current policy and diff it, and download the
+     run's evidence pack as a JSON file. */
+  const [replay, setReplay] = useState<ReplayResult | null>(null);
+  const [replayBusy, setReplayBusy] = useState(false);
+  const [replayError, setReplayError] = useState("");
+  const doReplay = async () => {
+    if (!shownRunId) return;
+    setReplayBusy(true);
+    setReplayError("");
+    try {
+      const d = await api<ReplayResult>(
+        `/api/v1/runs/${encodeURIComponent(shownRunId)}/replay`,
+        { method: "POST" }
+      );
+      setReplay(d);
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReplayBusy(false);
+    }
+  };
+  const downloadEvidence = async () => {
+    if (!shownRunId) return;
+    try {
+      const d = await api<Record<string, unknown>>(
+        `/api/v1/runs/${encodeURIComponent(shownRunId)}/evidence`
+      );
+      const blob = new Blob([JSON.stringify(d, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `slatematch-evidence-${shownRunId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const gradeResult =
     data?.grade?.kind === "case" && data.ws.case
       ? gradeCase(
@@ -1709,6 +1764,64 @@ export default function Run() {
                   </Panel>
                 </div>
                 )}
+              {auditRows.length > 0 && shownRunId && (
+                <div className="mt-4">
+                  <Panel title="Proof - replay this run, or hand it to an auditor">
+                    <div className="flex items-center gap-3 flex-wrap mt-1">
+                      <GhostBtn onClick={doReplay} disabled={replayBusy}>
+                        {replayBusy ? "Replaying..." : "Replay this run"}
+                      </GhostBtn>
+                      <GhostBtn onClick={downloadEvidence}>
+                        Download evidence pack (JSON)
+                      </GhostBtn>
+                      <span className="text-[12px] text-mut">
+                        Replay re-runs this run's payments in a scratch
+                        session under the policy a fresh run would use
+                        now, and diffs the outcomes. The evidence pack
+                        is the run's full record with a SHA-256 manifest.
+                      </span>
+                    </div>
+                    {replayError && (
+                      <p className="text-[13px] text-mut m-0 mt-2">{replayError}</p>
+                    )}
+                    {replay && (
+                      <div className="mt-3">
+                        <p className="text-[13px] m-0">
+                          <b>{replay.changed_count} of {replay.results.length}</b>{" "}
+                          payments would land differently under the current
+                          policy ({replay.policy_name}).
+                        </p>
+                        <DataTable
+                          head={
+                            <>
+                              <Th>Payment</Th>
+                              <Th>Then</Th>
+                              <Th>Now</Th>
+                              <Th>{""}</Th>
+                            </>
+                          }
+                        >
+                          {replay.results.map((r) => (
+                            <Row key={r.payment_id}>
+                              <Td className="font-mono text-[12px]">{r.payment_id}</Td>
+                              <Td>{r.then_status}</Td>
+                              <Td>{r.now_status}</Td>
+                              <Td>
+                                {r.changed ? (
+                                  <Pill kind="warn">CHANGED</Pill>
+                                ) : (
+                                  <span className="text-mut text-[12px]">same</span>
+                                )}
+                              </Td>
+                            </Row>
+                          ))}
+                        </DataTable>
+                        <p className="text-[12px] text-mut m-0 mt-2">{replay.basis}</p>
+                      </div>
+                    )}
+                  </Panel>
+                </div>
+              )}
             </Rise>
           )}
 
