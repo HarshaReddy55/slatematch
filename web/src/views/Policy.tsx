@@ -16,13 +16,14 @@ import { Rise } from "../ui/motion";
    stored value and the API body stay in cents, exact; the raw cent
    value is one hover away in the input's title. */
 
-type FieldType = "text" | "number" | "cents";
+type FieldType = "text" | "number" | "cents" | "select";
 interface Field {
   key: string;
   label: string;
   why: string;
   formula: string;
   type: FieldType;
+  options?: { value: string; label: string }[];
 }
 
 const GROUPS: { title: string; fields: Field[] }[] = [
@@ -109,6 +110,18 @@ const GROUPS: { title: string; fields: Field[] }[] = [
         formula: "match value above this requires a second approver",
         type: "cents",
       },
+      {
+        key: "partial_allocation_mode",
+        label: "Partial payment allocation",
+        why: "When an underpayment is approved, how its cash is spread across the matched invoices. Pro-rata shares the shortfall across every line. Oldest first settles the oldest invoice in full and leaves the balance on the newest, the way most AR policies read. Remittance-specified uses the per-invoice amounts the remittance itself states, spreading anything left pro-rata (and falling back to pro-rata when the remittance prices no line). Credit memos always net at face value first.",
+        formula: "applied cash distribution at partial-match approval",
+        type: "select",
+        options: [
+          { value: "pro_rata", label: "Pro-rata across lines" },
+          { value: "fifo_oldest", label: "Oldest first (FIFO)" },
+          { value: "explicit_line", label: "Remittance-specified amounts" },
+        ],
+      },
     ],
   },
 ];
@@ -173,7 +186,7 @@ export default function Policy({
     const body: Record<string, unknown> = {};
     for (const f of ALL_FIELDS) {
       const raw = (values[f.key] ?? "").trim();
-      if (f.type === "text") {
+      if (f.type === "text" || f.type === "select") {
         body[f.key] = raw;
         continue;
       }
@@ -298,6 +311,24 @@ export default function Policy({
                             {f.formula}
                           </div>
                         </div>
+                        {f.type === "select" ? (
+                          <select
+                            id={`pol-${f.key}`}
+                            value={values[f.key]}
+                            onChange={(e) =>
+                              setValues((v) =>
+                                v ? { ...v, [f.key]: e.target.value } : v
+                              )
+                            }
+                            className="glass-input border border-line rounded-none px-2.5 py-2 text-[13.5px] text-ink w-full"
+                          >
+                            {(f.options || []).map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
                         <input
                           id={`pol-${f.key}`}
                           type={f.type === "text" ? "text" : "number"}
@@ -317,6 +348,7 @@ export default function Policy({
                           }
                           className="glass-input border border-line rounded-none px-2.5 py-2 text-[13.5px] text-ink w-full font-mono"
                         />
+                        )}
                         <p className="text-[12.5px] text-mut leading-relaxed m-0">
                           {f.why}
                         </p>

@@ -96,10 +96,18 @@ def test_discount_percent_convention():
 
 
 def test_nonpositive_amounts_are_quarantined():
-    out = parse_invoices_csv("invoice_id,customer,amount\nA-1,Apex,-50.00\n")
+    # Zero is quarantined on both sides. A NEGATIVE invoice is no
+    # longer quarantined: since Phase 4 (16 Nov 2026, owner-approved
+    # credit-memo netting) it is a credit memo and is accepted as one.
+    # Negative payments remain quarantined - a wire cannot be negative.
+    out = parse_invoices_csv("invoice_id,customer,amount\nA-1,Apex,0\n")
     assert out["invoices"] == [] and out["errors"]
+    out = parse_invoices_csv("invoice_id,customer,amount\nA-1,Apex,-50.00\n")
+    assert len(out["invoices"]) == 1 and out["invoices"][0].gross_cents == -5000
     out2 = parse_payments_csv("payment_id,payer,amount\nX1,Apex,0\n")
     assert out2["payments"] == [] and out2["errors"]
+    out3 = parse_payments_csv("payment_id,payer,amount\nX1,Apex,-10.00\n")
+    assert out3["payments"] == [] and out3["errors"]
 
 
 def test_pod_column_and_reference_prefixes():

@@ -40,8 +40,18 @@ class Policy:
     dispute_processing_cost_usd: float = 45.0
     tolerance_writeoff_cents: int = 2500 # variances <= $25 write off, do not dispute
     maker_checker_threshold_cents: int = 10_000_000  # $100,000
+    # How an underpayment is spread across the matched lines when a
+    # partial match is approved: pro_rata (today's behaviour, the
+    # default), fifo_oldest (fill the oldest invoice in full first,
+    # the shortfall lands on the newest), or explicit_line (the
+    # amounts the remittance itself specifies per invoice, with any
+    # remainder spread pro-rata; falls back to pro_rata when the
+    # remittance prices no line).
+    partial_allocation_mode: str = "pro_rata"
 
     def __post_init__(self):
+        if self.partial_allocation_mode not in ("pro_rata", "fifo_oldest", "explicit_line"):
+            raise ValueError("partial_allocation_mode must be pro_rata, fifo_oldest or explicit_line")
         # A policy is accounting judgement expressed as data; nonsense
         # values (a negative hold limit, a confidence bar above 1) must
         # fail loudly at the boundary, never reach the solver.

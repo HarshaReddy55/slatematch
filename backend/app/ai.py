@@ -21,6 +21,22 @@ PARSE_SCHEMA_HINT = ('Return ONLY JSON with keys: payer (string), amount_cents (
                      'invoice_refs (list of strings), po_refs (list of strings), '
                      'deduction_cents (int), deduction_reason (string)')
 
+# The same shape as a strict response schema for generateContent:
+# with it, the model cannot return anything outside this object.
+PARSE_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "payer": {"type": "string"},
+        "amount_cents": {"type": "integer"},
+        "invoice_refs": {"type": "array", "items": {"type": "string"}},
+        "po_refs": {"type": "array", "items": {"type": "string"}},
+        "deduction_cents": {"type": "integer"},
+        "deduction_reason": {"type": "string"},
+    },
+    "required": ["payer", "amount_cents", "invoice_refs", "po_refs",
+                 "deduction_cents", "deduction_reason"],
+}
+
 # Diagnostics: the most recent Gemini failure, sanitised (HTTP status and
 # Google's own error reason - never the key). Surfaced on /health so a
 # failing AI layer can be diagnosed from outside instead of guessed at.
@@ -60,12 +76,36 @@ class GeminiClient:
                                             "Content-Type": "application/json"}, json=payload)
             r.raise_for_status()
             return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    def generate_json(self, prompt):
+    def generate_json(self, prompt, schema=None):
         if not self.available:
             raise RuntimeError("GEMINI_API_KEY not configured")
         payload = {"contents": [{"parts": [{"text": prompt}]}],
                    "generationConfig": {"responseMimeType": "application/json", "temperature": 0,
                                         "maxOutputTokens": 1024}}
+        if schema is not None:
+            # Strict structured output: the model can only answer in
+            # the declared shape, so a malformed-JSON parse answer is
+            # impossible at the sampling layer. If the endpoint ever
+            # rejects the schema itself, retry once without it - a
+            # schema rejection must degrade to yesterday's behaviour
+            # (unconstrained JSON + our own key check), never to the
+            # deterministic fallback for every parse.
+            payload["generationConfig"]["responseSchema"] = schema
+            try:
+                out = json.loads(self._call(payload))
+                LAST_GEMINI_ERROR["error"] = None
+                LAST_GEMINI_ERROR["at"] = int(time.time())
+                return out
+            except Exception:
+                payload["generationConfig"].pop("responseSchema", None)
+                try:
+                    out = json.loads(self._call(payload))
+                    LAST_GEMINI_ERROR["error"] = None
+                    LAST_GEMINI_ERROR["at"] = int(time.time())
+                    return out
+                except Exception as e:
+                    _record_gemini_error(e)
+                    raise
         try:
             out = json.loads(self._call(payload))
             LAST_GEMINI_ERROR["error"] = None
@@ -125,6 +165,72 @@ class AiBudget:
 
 
 AI_BUDGET = AiBudget()
+
+
+# ---------------------------------------------------------------------
+# PII redaction for external LLM calls. Remittance text is the buyer's
+# email, and buyers paste bank details into it. Anything that looks
+# like a bank credential is scrubbed from the copy sent to Gemini -
+# the deterministic parser and the verifier always work on the
+# original text, and none of the extracted fields (payer, amount,
+# references, deduction) is a bank detail, so redaction costs the
+# extraction nothing. Patterns are deliberately strict: an IBAN must
+# match the IBAN format, a routing number must pass the ABA checksum,
+# account numbers and BICs are taken only next to their labels (or,
+# for BICs, as digit-bearing tokens in BIC shape) - so invoice
+# references, PO numbers and amounts are never eaten.
+_IBAN_RE = re.compile(r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?\d{1,4})?\b")
+_BIC_LABEL_RE = re.compile(r"\b(?:SWIFT|BIC)(?:\s*code)?\s*[:#]?\s*([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b")
+_BIC_TOKEN_RE = re.compile(r"\b([A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?)\b")
+_ACCT_LABEL_RE = re.compile(r"\b(?:account|acct|a/c|acc)(?:\s*(?:no\.?|number|#))?\s*[:#]?\s*([0-9][0-9 -]{4,24}[0-9])\b", re.I)
+_DIGITS9_RE = re.compile(r"\b(\d{9})\b")
+REDACTED = "[REDACTED]"
+
+
+def _aba_checksum_ok(digits):
+    d = [int(c) for c in digits]
+    return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])) % 10 == 0
+
+
+def redact_pii(text):
+    """Return (scrubbed_text, substitution_count) for text headed to an
+    external LLM. The input is never mutated for local use - callers
+    pass the result only into the outbound prompt."""
+    if not text:
+        return text, 0
+    count = [0]
+
+    def sub(pattern, s, group=None):
+        def repl(m):
+            count[0] += 1
+            if group is None:
+                return REDACTED
+            whole = m.group(0)
+            return whole[:m.start(group) - m.start(0)] + REDACTED + whole[m.end(group) - m.start(0):]
+        return pattern.sub(repl, s)
+
+    out = sub(_IBAN_RE, text)
+    out = sub(_BIC_LABEL_RE, out, group=1)
+    out = sub(_ACCT_LABEL_RE, out, group=1)
+
+    def bic_token(m):
+        tok = m.group(1)
+        # A standalone BIC almost always carries a digit in its
+        # location/branch part; a pure-letter 8/11-char token is far
+        # more likely an ordinary capitalised word, so it stays.
+        if any(c.isdigit() for c in tok[6:]):
+            count[0] += 1
+            return REDACTED
+        return tok
+    out = _BIC_TOKEN_RE.sub(bic_token, out)
+
+    def routing(m):
+        if _aba_checksum_ok(m.group(1)):
+            count[0] += 1
+            return REDACTED
+        return m.group(1)
+    out = _DIGITS9_RE.sub(routing, out)
+    return out, count[0]
 
 
 INV_RE = re.compile(r"\b(?:([A-Za-z]{1,4})-)?INV[- ]?(\d+)\b", re.I)
@@ -235,10 +341,17 @@ def parse_remittance(text, known_invoice_ids=None, known_po_numbers=None, client
     client = client or GeminiClient()
     source, degraded, fields = "deterministic", False, None
     ai_state = "no_key"
+    pii_redacted = 0
     if client.available:
         ai_state = "call_failed"
         try:
-            out = client.generate_json(f"Extract remittance fields from this text. {PARSE_SCHEMA_HINT}\n\nTEXT:\n{text}")
+            # Only the outbound copy is scrubbed: bank details in the
+            # buyer's text never leave for the LLM. The deterministic
+            # parser and the verifier below keep the original text.
+            prompt_text, pii_redacted = redact_pii(text)
+            out = client.generate_json(
+                f"Extract remittance fields from this text. {PARSE_SCHEMA_HINT}\n\nTEXT:\n{prompt_text}",
+                schema=PARSE_RESPONSE_SCHEMA)
             required = {"payer", "amount_cents", "invoice_refs", "po_refs", "deduction_cents", "deduction_reason"}
             if not required.issubset(set(out.keys())):
                 raise ValueError("schema incomplete")
@@ -251,4 +364,4 @@ def parse_remittance(text, known_invoice_ids=None, known_po_numbers=None, client
         fields, degraded = deterministic_parse(text), True
     v = verify_parse(fields, known_invoice_ids or set(), known_po_numbers or set(), text=text)
     return {"fields": fields, "source": source, "degraded": degraded,
-            "ai_state": ai_state, "verification": v}
+            "ai_state": ai_state, "verification": v, "pii_redacted": pii_redacted}

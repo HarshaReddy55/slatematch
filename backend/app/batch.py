@@ -100,6 +100,92 @@ def _usd(cents):
     c = cents or 0
     return f"-${abs(c) / 100:,.2f}" if c < 0 else f"${c / 100:,.2f}"
 
+def allocate_partial_payment(lines, applied_total_cents, mode, invoice_meta, specified_amounts):
+    """Spread an underpayment's applied cash across the matched lines
+    (settlement of a partial match at approval time).
+
+    lines: stored match line dicts (invoice_id, gross_cents,
+    net_cents). applied_total_cents: the cash to distribute (total
+    net + residual, with residual < 0). mode: the tenant policy's
+    partial_allocation_mode. invoice_meta: {invoice_id: Invoice} for
+    age/due ordering. specified_amounts: {invoice_id: cents} the
+    remittance itself states per invoice (explicit_line mode).
+
+    Credit-memo lines (negative net) are offsets, not cash
+    recipients: in every mode they are applied at their full net
+    first, and the remaining cash is spread over the positive lines.
+    Returns (allocations, mode_used, note) where allocations maps
+    invoice_id -> applied cents and always sums to
+    applied_total_cents; no positive line is applied beyond its net."""
+    allocs = {}
+    credits = [l for l in lines if (l.get("net_cents") or 0) < 0]
+    positives = [l for l in lines if (l.get("net_cents") or 0) >= 0]
+    credit_net = sum(l.get("net_cents") or 0 for l in credits)
+    for l in credits:
+        allocs[l["invoice_id"]] = l.get("net_cents") or 0
+    distributable = applied_total_cents - credit_net
+    total_pos_net = sum(l.get("net_cents") or 0 for l in positives)
+
+    def pro_rata(pool, cash):
+        out = {}
+        done = 0
+        pool_net = sum(l.get("net_cents") or 0 for l in pool)
+        for i, l in enumerate(pool):
+            net = l.get("net_cents") or 0
+            if i == len(pool) - 1:
+                out[l["invoice_id"]] = cash - done
+            elif pool_net:
+                out[l["invoice_id"]] = net * cash // pool_net
+                done += out[l["invoice_id"]]
+            else:
+                out[l["invoice_id"]] = 0
+        return out
+
+    note = None
+    mode_used = mode
+    if not positives:
+        pass
+    elif mode == "fifo_oldest":
+        def age_key(l):
+            inv = invoice_meta.get(l["invoice_id"])
+            return (-(inv.age_days if inv else 0), (inv.due_in_days if inv else 0), l["invoice_id"])
+        cash = distributable
+        fifo = {}
+        for l in sorted(positives, key=age_key):
+            net = l.get("net_cents") or 0
+            take = min(net, max(cash, 0))
+            fifo[l["invoice_id"]] = take
+            cash -= take
+        for l in positives:
+            allocs[l["invoice_id"]] = fifo.get(l["invoice_id"], 0)
+    elif mode == "explicit_line":
+        specified = {iid: amt for iid, amt in (specified_amounts or {}).items()
+                     if any(l["invoice_id"] == iid for l in positives)}
+        if not specified:
+            mode_used = "pro_rata"
+            note = "the remittance specified no per-invoice amounts - pro-rata fallback"
+            allocs.update(pro_rata(positives, distributable))
+        else:
+            cash = distributable
+            explicit = {}
+            for l in positives:
+                iid = l["invoice_id"]
+                if iid in specified:
+                    take = min(specified[iid], l.get("net_cents") or 0, max(cash, 0))
+                    explicit[iid] = take
+                    cash -= take
+            rest = [l for l in positives if l["invoice_id"] not in explicit]
+            if rest and cash > 0:
+                explicit.update(pro_rata(rest, cash))
+                note = "lines the remittance did not price were spread pro-rata"
+            elif rest:
+                for l in rest:
+                    explicit[l["invoice_id"]] = 0
+            allocs.update(explicit)
+    else:
+        allocs.update(pro_rata(positives, distributable))
+    return allocs, mode_used, note
+
 def _kernel_available():
     import os
     b = os.environ.get("SLATEMATCH_KERNEL_BIN", "")
@@ -115,6 +201,11 @@ def _enumerate_subsets(cands, target_cents):
     if n == 0 or n > 18:
         return None, None, []
     if any(c.discount_rate for c in cands):
+        return None, None, []
+    if any(c.gross_cents <= 0 for c in cands):
+        # A credit memo in the pool breaks the enumeration's pruning
+        # (partial sums are no longer monotonic), so exact-set
+        # counting is not honest here; the MILP still solves it.
         return None, None, []
     amounts = [c.gross_cents for c in cands]
     exact, near = [], []

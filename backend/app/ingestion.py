@@ -91,7 +91,7 @@ def parse_invoices_csv(text):
             inv_id = str(g("invoice_id")).strip()
             if not inv_id: raise ValueError("missing invoice id")
             if not _ID_RE.match(inv_id): raise ValueError("invoice id contains characters that are not allowed")
-            if _money_to_cents(g("gross_cents")) <= 0: raise ValueError("invoice amount must be positive")
+            if _money_to_cents(g("gross_cents")) == 0: raise ValueError("invoice amount cannot be zero (a negative amount is a credit memo and is accepted as one)")
             rows.append(Invoice(
                 invoice_id=inv_id, customer=str(g("customer", "UNKNOWN")).strip() or "UNKNOWN",
                 subsidiary=str(g("subsidiary", "MAIN")).strip() or "MAIN",

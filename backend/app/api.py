@@ -238,10 +238,15 @@ def workspace(ctx=Depends(auth_context)):
 def _policy_for(repo, tenant_id, body_policy):
     """Effective run policy: an explicit request body wins; otherwise the
     tenant's stored policy, with the active use-case pack's grading override
-    (if any) applied on top."""
-    if body_policy: return Policy(**body_policy)
+    (if any) applied on top. A body policy MERGES over the stored one:
+    a client that posts only the fields it knows (the vanilla Policy
+    Studio predates newer fields) must not silently reset the rest to
+    defaults."""
     stored = store.get_policy(tenant_id)
     base = dict(stored) if stored else {}
+    if body_policy:
+        merged = {**base, **body_policy}
+        return Policy(**merged)
     case = repo.get_meta("active_case") or {}
     for k, v in (case.get("policy") or {}).items(): base[k] = v
     return Policy(**base) if base else Policy()
@@ -960,6 +965,8 @@ def match_decision(match_id: str, body: DecisionIn, ctx=Depends(auth_context)):
     settled = []
     partials = []
     parked = False
+    alloc_mode_used = None
+    alloc_note = None
     if body.decision == "approve" and not refusal:
         # The posting document reference for this approval, derived from
         # the decision fingerprint - the ERP preview on the match shows
@@ -977,26 +984,34 @@ def match_decision(match_id: str, body: DecisionIn, ctx=Depends(auth_context)):
             # line invoice is settled in full.
             settled = [l["invoice_id"] for l in lines]
         else:
-            # Partial payment: the shortfall is attributed pro-rata
-            # across the lines (the last line takes the rounding
-            # remainder) and every invoice stays OPEN with its balance
-            # reduced by what was actually applied. Settling a part-paid
-            # invoice in full would erase a live receivable from the
-            # ledger and the forecast.
+            # Partial payment: the applied cash is spread across the
+            # lines by the tenant policy's allocation mode (pro-rata,
+            # the long-standing default; oldest-first; or the
+            # remittance's own per-invoice amounts). A line the cash
+            # covers in full settles; every other line stays OPEN
+            # with its balance reduced by what was actually applied.
+            # Settling a part-paid invoice in full would erase a live
+            # receivable from the ledger and the forecast.
+            from batch import allocate_partial_payment
+            from ai import amounts_for_refs
             total_net = sum(l.get("net_cents") or 0 for l in lines)
             applied_total = total_net + residual_cents
-            _done = 0
-            for _i, l in enumerate(lines):
-                if _i == len(lines) - 1:
-                    applied_i = applied_total - _done
-                elif total_net:
-                    applied_i = (l.get("net_cents") or 0) * applied_total // total_net
-                    _done += applied_i
+            pol = _policy_for(repo, ctx["tenant_id"], None)
+            _meta = {i.invoice_id: i for i in repo.all_invoices()}
+            _pay_rec = res.get("payment") or {}
+            _specified = (amounts_for_refs(_pay_rec.get("remittance_text") or "",
+                                           [l["invoice_id"] for l in lines])
+                          if pol.partial_allocation_mode == "explicit_line" else {})
+            _allocs, alloc_mode_used, alloc_note = allocate_partial_payment(
+                lines, applied_total, pol.partial_allocation_mode, _meta, _specified)
+            for l in lines:
+                applied_i = _allocs.get(l["invoice_id"], 0)
+                if applied_i >= (l.get("gross_cents") or 0):
+                    settled.append(l["invoice_id"])
                 else:
-                    applied_i = 0
-                partials.append({"invoice_id": l["invoice_id"],
-                                 "applied_cents": applied_i,
-                                 "remaining_cents": (l.get("gross_cents") or 0) - applied_i})
+                    partials.append({"invoice_id": l["invoice_id"],
+                                     "applied_cents": applied_i,
+                                     "remaining_cents": (l.get("gross_cents") or 0) - applied_i})
     elif body.decision == "approve" and refusal:
         parked = True
     res["approval"] = {"decision": body.decision, "by_role": ctx["role"],
@@ -1004,6 +1019,8 @@ def match_decision(match_id: str, body: DecisionIn, ctx=Depends(auth_context)):
                        "erp_document_id": erp_document_id,
                        "settled_invoices": settled,
                        "partial_application": partials,
+                       "allocation_mode": alloc_mode_used,
+                       "allocation_note": alloc_note,
                        "parked_in_suspense": parked}
     if body.decision == "reject":
         new_status = "REJECTED"
@@ -1886,15 +1903,18 @@ def get_policy(ctx=Depends(auth_context)):
 @app.put("/api/v1/policy")
 def put_policy(body: PolicyIn, ctx=Depends(auth_context)):
     need(ctx, "admin")
+    before = store.get_policy(ctx["tenant_id"])
+    # Merge over the stored policy (see _policy_for): a partial post
+    # updates the fields it names and preserves the rest.
+    merged = {**(before or {}), **body.policy}
     try:
-        Policy(**body.policy)  # field names AND value ranges (Policy.__post_init__)
+        Policy(**merged)  # field names AND value ranges (Policy.__post_init__)
     except (TypeError, ValueError) as e:
         raise HTTPException(422, f"invalid policy: {e}")
-    before = store.get_policy(ctx["tenant_id"])
-    store.set_policy(ctx["tenant_id"], body.policy)
+    store.set_policy(ctx["tenant_id"], merged)
     repo = repo_for(ctx["tenant_id"])
     repo.audit(f"api:{ctx['role']}", "policy_updated", "policy", ctx["tenant_id"],
-               {"before": before, "after": body.policy}, _now_iso())
+               {"before": before, "after": merged}, _now_iso())
     return {"saved": True}
 
 @app.post("/api/v1/policy/preview")

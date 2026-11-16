@@ -82,6 +82,12 @@ def _try_kernel_exact(payment, candidates, policy, matched_by):
         return None
     if payment.claimed_deduction_cents or any(c.discount_rate for c in candidates):
         return None
+    if any(c.gross_cents <= 0 for c in candidates):
+        # A credit memo in the pool makes subset sums non-monotonic:
+        # the kernel's enumeration (and the uniqueness re-count below,
+        # which prunes on partial sums) is only sound for positive
+        # amounts. Netting belongs to the MILP.
+        return None
     t0 = time.perf_counter()
     try:
         from rust_bridge import best_subset_rust
@@ -129,6 +135,13 @@ def solve_milp(payment: Payment, candidates: list, policy: Policy, matched_by: s
     for i in range(n):
         A_ub[i, i] = -1.0; A_ub[i, n + i] = 1.0
     lb_vars = np.zeros(num_vars); ub_vars = np.ones(num_vars); ub_vars[-2:] = np.inf
+    for i, inv in enumerate(candidates):
+        if inv.gross_cents < 0:
+            # A credit memo nets at face value: it never takes an
+            # early-payment discount (a discount on a negative line
+            # would manufacture cash), so its discount variable is
+            # pinned to zero and its gross enters the equality as-is.
+            ub_vars[n + i] = 0.0
     # Integer verification loop: with seven-figure gross amounts in the
     # equality row, HiGHS scaling tolerances can accept a set that is a few
     # cents off as if it balanced. Every returned set is therefore re-checked
@@ -194,6 +207,10 @@ def solve_greedy(payment: Payment, candidates: list, policy: Policy) -> MatchRes
     remaining = payment.amount_cents
     lines = []
     for inv in candidates:
+        if inv.gross_cents <= 0:
+            # The naive baseline never nets credit memos - that is
+            # part of what makes it the baseline the MILP must beat.
+            continue
         if inv.gross_cents <= remaining:
             lines.append(MatchLine(inv.invoice_id, inv.gross_cents, 0, inv.gross_cents, False))
             remaining -= inv.gross_cents
