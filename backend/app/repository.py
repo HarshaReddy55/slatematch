@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS disputes(
 CREATE TABLE IF NOT EXISTS eval_snapshots(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, milp_accuracy REAL,
   greedy_accuracy REAL, milp_exact_rate REAL, cases INTEGER);
+CREATE TABLE IF NOT EXISTS transmissions(
+  transmission_id TEXT PRIMARY KEY, payment_id TEXT, document_number TEXT,
+  mode TEXT, status TEXT, sap_document_number TEXT, detail TEXT,
+  created_at TEXT);
+CREATE TABLE IF NOT EXISTS webhooks(
+  webhook_id TEXT PRIMARY KEY, url TEXT, events TEXT, active INTEGER,
+  created_at TEXT);
+CREATE TABLE IF NOT EXISTS webhook_deliveries(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, webhook_id TEXT, event TEXT,
+  status_code INTEGER, ok INTEGER, error TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS feed_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, summary TEXT,
+  created_at TEXT);
+CREATE TABLE IF NOT EXISTS tenant_settings(
+  key TEXT PRIMARY KEY, value_json TEXT);
 CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_matches_payment ON matches(payment_id);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
@@ -219,7 +234,7 @@ class Repository:
             # they track the evaluations computation over time, not
             # this dataset. The outbox and audit log are the tenant's
             # record and also survive, as they always have.
-            for t in ("invoices", "payments", "runs", "run_steps", "matches", "exceptions", "workspace_meta", "disputes", "promises"):
+            for t in ("invoices", "payments", "runs", "run_steps", "matches", "exceptions", "workspace_meta", "disputes", "promises", "transmissions"):
                 self.conn.execute(f"DELETE FROM {t}")
             if getattr(self._local, "txn_depth", 0) == 0:
                 self.conn.commit()
@@ -497,6 +512,74 @@ class Repository:
                 "milp_exact_rate, cases) VALUES (?,?,?,?,?)",
                 (ts, float(milp_accuracy), float(greedy_accuracy),
                  float(milp_exact_rate), int(cases)))
+
+    # -- integrations: transmissions, webhooks, feed events --
+    def get_setting(self, key, default=None):
+        row = self.conn.execute(
+            "SELECT value_json FROM tenant_settings WHERE key=?",
+            (key,)).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def set_setting(self, key, value):
+        self._x("INSERT OR REPLACE INTO tenant_settings VALUES (?,?)",
+                (key, json.dumps(value)))
+
+
+    def add_transmission(self, tid, payment_id, document_number, mode,
+                         status, sap_document_number, detail, ts):
+        self._x("INSERT INTO transmissions VALUES (?,?,?,?,?,?,?,?)",
+                (tid, payment_id, document_number, mode, status,
+                 sap_document_number, detail, ts))
+
+    def list_transmissions(self, limit=100):
+        rows = self.conn.execute(
+            "SELECT transmission_id, payment_id, document_number, mode, status,"
+            " sap_document_number, detail, created_at FROM transmissions"
+            " ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        keys = ("transmission_id", "payment_id", "document_number", "mode",
+                "status", "sap_document_number", "detail", "created_at")
+        return [dict(zip(keys, r)) for r in rows]
+
+    def add_webhook(self, wid, url, events, ts):
+        self._x("INSERT INTO webhooks VALUES (?,?,?,?,?)",
+                (wid, url, events, 1, ts))
+
+    def list_webhooks(self):
+        rows = self.conn.execute(
+            "SELECT webhook_id, url, events, active, created_at FROM webhooks"
+            " ORDER BY created_at").fetchall()
+        return [{"webhook_id": r[0], "url": r[1], "events": r[2],
+                 "active": bool(r[3]), "created_at": r[4]} for r in rows]
+
+    def delete_webhook(self, wid):
+        cur = self._x("DELETE FROM webhooks WHERE webhook_id=?", (wid,))
+        return cur.rowcount > 0
+
+    def add_delivery(self, wid, event, status_code, ok, error, ts):
+        self._x("INSERT INTO webhook_deliveries"
+                " (webhook_id, event, status_code, ok, error, created_at)"
+                " VALUES (?,?,?,?,?,?)",
+                (wid, event, status_code, 1 if ok else 0, error, ts))
+
+    def list_deliveries(self, limit=50):
+        rows = self.conn.execute(
+            "SELECT id, webhook_id, event, status_code, ok, error, created_at"
+            " FROM webhook_deliveries ORDER BY id DESC LIMIT ?",
+            (limit,)).fetchall()
+        return [{"id": r[0], "webhook_id": r[1], "event": r[2],
+                 "status_code": r[3], "ok": bool(r[4]), "error": r[5],
+                 "created_at": r[6]} for r in rows]
+
+    def add_feed_event(self, kind, summary, ts):
+        self._x("INSERT INTO feed_events (kind, summary, created_at)"
+                " VALUES (?,?,?)", (kind, summary, ts))
+
+    def list_feed_events(self, limit=50):
+        rows = self.conn.execute(
+            "SELECT id, kind, summary, created_at FROM feed_events"
+            " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"id": r[0], "kind": r[1], "summary": r[2], "created_at": r[3]}
+                for r in rows]
 
     def list_eval_snapshots(self, limit=60):
         rows = self.conn.execute(

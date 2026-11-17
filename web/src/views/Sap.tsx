@@ -14,6 +14,18 @@ import ViewHead, { LoadError } from "../ui/ViewHead";
 import ViewSkeleton from "../ui/Skeleton";
 import { Rise } from "../ui/motion";
 import { GhostBtn, GlTable, JsonBox, StagedGate } from "../ui/Stage3";
+import DataTable, { Row, Td, Th } from "../ui/DataTable";
+
+interface Transmission {
+  transmission_id: string;
+  payment_id: string;
+  document_number: string;
+  mode: string;
+  status: string;
+  sap_document_number: string | null;
+  detail: string;
+  created_at: string;
+}
 
 /* Stage 3: SAP BAPI & EBRR (05). One source, GET
    /api/v1/erp/run-documents, exactly as vanilla loadSap(). Document
@@ -28,20 +40,45 @@ export default function Sap() {
   const [error, setError] = useState("");
   const [sel, setSel] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [settings, setSettings] = useState<{ sap_mode: string; sap_endpoint: string } | null>(null);
+  const [transmissions, setTransmissions] = useState<Transmission[]>([]);
+  const [txBusy, setTxBusy] = useState(false);
+  const [txNote, setTxNote] = useState("");
 
   const load = useCallback(() => {
     setError("");
     Promise.all([
       api<ErpRunDocuments>("/api/v1/erp/run-documents"),
       api<WorkspaceOperate>("/api/v1/workspace"),
+      api<{ sap_mode: string; sap_endpoint: string }>("/api/v1/integrations/settings").catch(() => null),
+      api<{ transmissions: Transmission[] }>("/api/v1/erp/transmissions").catch(() => ({ transmissions: [] })),
     ])
-      .then(([d, w]) => {
+      .then(([d, w, s, t]) => {
         setDocs(d);
         setWs(w);
-        setSel((s) => (s >= (d.documents || []).length ? 0 : s));
+        if (s) setSettings(s);
+        setTransmissions(t.transmissions || []);
+        setSel((s2) => (s2 >= (d.documents || []).length ? 0 : s2));
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  const transmit = async (paymentId: string) => {
+    setTxBusy(true);
+    setTxNote("");
+    try {
+      const d = await api<{ status: string; sap_document_number: string | null; detail: string }>(
+        "/api/v1/erp/transmit", { method: "POST", body: JSON.stringify({ payment_id: paymentId }) }
+      );
+      setTxNote(`${paymentId}: ${d.status}${d.sap_document_number ? ` - ${d.sap_document_number}` : ""} (${d.detail})`);
+      const t = await api<{ transmissions: Transmission[] }>("/api/v1/erp/transmissions");
+      setTransmissions(t.transmissions || []);
+    } catch (e) {
+      setTxNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTxBusy(false);
+    }
+  };
   useEffect(load, [load]);
   /* Stage 6 (Item 1): reload when the workspace is replaced. */
   useWsRefresh(load, () => {
@@ -203,6 +240,52 @@ export default function Sap() {
                   <JsonBox
                     text={JSON.stringify(cur.document.bapi_payload, null, 2)}
                   />
+                </Panel>
+              </Rise>
+
+              <Rise i={3}>
+                <Panel
+                  title="Write-back - transmit to SAP"
+                  sub="Simulated mode validates the payload exactly as a receiving system would (header, lines, amounts netting to zero) and assigns a SAPSIM document number - the record says SIMULATED in plain words; no real SAP system is claimed. HTTP mode posts the payload to the configured endpoint and records the real answer."
+                >
+                  <div className="flex items-center gap-3 flex-wrap mt-2">
+                    {settings?.sap_mode === "http" ? (
+                      <Pill kind="info">HTTP - {settings.sap_endpoint}</Pill>
+                    ) : (
+                      <Pill kind="warn">SIMULATED CONNECTION</Pill>
+                    )}
+                    <GhostBtn onClick={() => transmit(cur.payment_id)} disabled={txBusy}>
+                      {txBusy ? "Transmitting..." : `Transmit ${cur.payment_id} to SAP`}
+                    </GhostBtn>
+                    {txNote && <span className="text-[12.5px] text-mut">{txNote}</span>}
+                  </div>
+                  {transmissions.length > 0 && (
+                    <DataTable
+                      head={
+                        <>
+                          <Th>Payment</Th>
+                          <Th>Document</Th>
+                          <Th>Mode</Th>
+                          <Th>Status</Th>
+                          <Th>SAP document</Th>
+                        </>
+                      }
+                    >
+                      {transmissions.map((t) => (
+                        <Row key={t.transmission_id}>
+                          <Td className="font-mono text-[12px]">{t.payment_id}</Td>
+                          <Td className="font-mono text-[12px]">{t.document_number}</Td>
+                          <Td>{t.mode}</Td>
+                          <Td>
+                            <Pill kind={t.status === "FAILED" ? "bad" : t.status === "SENT" ? "ok" : "warn"}>
+                              {t.status}
+                            </Pill>
+                          </Td>
+                          <Td className="font-mono text-[12px]">{t.sap_document_number || "-"}</Td>
+                        </Row>
+                      ))}
+                    </DataTable>
+                  )}
                 </Panel>
               </Rise>
             </>

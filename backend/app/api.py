@@ -378,6 +378,12 @@ def _finish_run_outputs(repo, run):
                     ded.get("assigned_erp_reason_code") or "", _now_iso())
     except Exception:
         pass
+    # Integrations fan-out (guarded inside _fire_webhooks): the
+    # run is complete and its outputs are composed.
+    _fire_webhooks(repo, "run.completed",
+                   {"run_id": run_id, "payments": (run or {}).get("payments"),
+                    "auto_posted": (run or {}).get("auto_posted"),
+                    "held": (run or {}).get("held")})
 
 @app.post("/api/v1/cases/{cid}/load")
 def load_case(cid: str, ctx=Depends(auth_context)):
@@ -1122,6 +1128,9 @@ def match_decision(match_id: str, body: DecisionIn, ctx=Depends(auth_context)):
         repo.rollback()
         raise
     repo.commit()
+    _fire_webhooks(repo, "approval.decided",
+                   {"match_id": match_id, "payment_id": m["payment_id"],
+                    "decision": body.decision, "status": new_status})
     return {"match_id": match_id, "status": new_status, "fingerprint": fingerprint,
             "erp_document_id": erp_document_id, "settled_invoices": settled,
             "parked_in_suspense": parked}
@@ -1599,9 +1608,12 @@ def reverse_match(match_id: str, ctx=Depends(auth_context)):
     need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
     from autonomy import reverse_autopilot
     try:
-        return reverse_autopilot(repo, match_id, f"api:{ctx['role']}", _now_iso)
+        out = reverse_autopilot(repo, match_id, f"api:{ctx['role']}", _now_iso)
     except ValueError as e:
         raise HTTPException(409, str(e))
+    _fire_webhooks(repo, "match.reversed",
+                   {"match_id": match_id, "restored_invoices": out.get("restored_invoices")})
+    return out
 
 @app.get("/api/v1/behaviour-profiles")
 def behaviour_profiles(ctx=Depends(auth_context)):
@@ -1716,6 +1728,9 @@ def dispute_transition(dispute_id: str, body: DisputeTransitionIn,
     repo.update_dispute(dispute_id, target, history, ts)
     repo.audit(f"api:{ctx['role']}", "dispute_" + target.lower(), "dispute",
                dispute_id, {"claimed_cents": d["claimed_cents"]}, ts)
+    _fire_webhooks(repo, "dispute.transitioned",
+                   {"dispute_id": dispute_id, "payment_id": d["payment_id"],
+                    "status": target, "claimed_cents": d["claimed_cents"]})
     if target == "SENT":
         subject = (f"Dispute claim {dispute_id} - deduction of "
                    f"${d['claimed_cents'] / 100:,.2f} under reason {d['reason_code'] or 'review'}")
@@ -1986,6 +2001,227 @@ def success_criteria(ctx=Depends(auth_context)):
                     "adversarial (duplicates, short-pays, a refusal) - it "
                     "exercises the exception paths rather than maximising "
                     "the touchless rate."}
+
+# ---- Integrations: SAP write-back, webhooks, feeds ----
+
+_WEBHOOK_EVENTS = {"run.completed", "approval.decided",
+                   "dispute.transitioned", "match.reversed"}
+
+def _guard_public_url(url):
+    from urllib.parse import urlparse
+    import ipaddress
+    u = urlparse(url or "")
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise HTTPException(422, "url must be an http(s) URL with a host")
+    host = u.hostname.lower()
+    if host == "localhost":
+        raise HTTPException(422, "url must not target localhost")
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise HTTPException(422, "url must not target a private or loopback address")
+    except ValueError:
+        pass  # a hostname, not an IP literal
+
+def _deliver_webhook(repo, hook, event, data):
+    import httpx
+    try:
+        r = httpx.post(hook["url"], timeout=5.0,
+                       json={"event": event, "data": data, "sent_at": _now_iso()})
+        repo.add_delivery(hook["webhook_id"], event, r.status_code,
+                          200 <= r.status_code < 300, "", _now_iso())
+    except Exception as e:
+        repo.add_delivery(hook["webhook_id"], event, None, False,
+                          str(e)[:200], _now_iso())
+
+def _fire_webhooks(repo, event, data):
+    """Best-effort event fan-out. A webhook can never fail the
+    operation that fired it; every delivery attempt is recorded."""
+    try:
+        for hook in repo.list_webhooks():
+            events = {e.strip() for e in (hook["events"] or "").split(",")}
+            if hook["active"] and (event in events or "all" in events):
+                _threading.Thread(target=_deliver_webhook,
+                                  args=(repo, hook, event, data),
+                                  daemon=True).start()
+    except Exception:
+        pass
+
+def _integration_settings(repo):
+    s = repo.get_setting("integrations", {}) or {}
+    return {"sap_mode": s.get("sap_mode", "simulated"),
+            "sap_endpoint": s.get("sap_endpoint", "")}
+
+@app.get("/api/v1/integrations/settings")
+def get_integration_settings(ctx=Depends(auth_context)):
+    need(ctx, "read")
+    return _integration_settings(repo_for(ctx["tenant_id"]))
+
+class IntegrationSettingsIn(BaseModel):
+    sap_mode: str = "simulated"
+    sap_endpoint: str = ""
+
+@app.put("/api/v1/integrations/settings")
+def put_integration_settings(body: IntegrationSettingsIn, ctx=Depends(auth_context)):
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    if body.sap_mode not in ("simulated", "http"):
+        raise HTTPException(422, "sap_mode must be 'simulated' or 'http'")
+    if body.sap_mode == "http":
+        if not body.sap_endpoint.startswith(("http://", "https://")):
+            raise HTTPException(422, "http mode needs an http(s) endpoint URL")
+    repo.set_setting("integrations", {"sap_mode": body.sap_mode,
+                                      "sap_endpoint": body.sap_endpoint})
+    return _integration_settings(repo)
+
+def _sap_simulator(payload):
+    """The connection point, honestly labelled: validates the BAPI
+    payload the way SAP's own checks would (header present, G/L
+    lines present, CURRENCYAMOUNT nets to zero) and returns the
+    document number a real system would assign. Nothing here
+    claims a real SAP system was reached."""
+    import hashlib as _hl
+    header = payload.get("DOCUMENTHEADER") or {}
+    if not (header.get("DOCUMENT_TYPE") or header.get("DOC_TYPE")):
+        return None, "payload rejected: DOCUMENTHEADER document type missing"
+    if not payload.get("ACCOUNTGL") and not payload.get("ACCOUNTRECEIVABLE"):
+        return None, "payload rejected: no posting lines"
+    net = sum(r.get("AMT_DOCCUR", 0) for r in payload.get("CURRENCYAMOUNT") or [])
+    if net != 0:
+        return None, f"payload rejected: CURRENCYAMOUNT nets to {net}, not zero"
+    digest = _hl.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return "SAPSIM-" + digest[:8].upper(), "payload valid; simulated posting accepted"
+
+class TransmitIn(BaseModel):
+    payment_id: str
+
+@app.post("/api/v1/erp/transmit")
+def erp_transmit(body: TransmitIn, ctx=Depends(auth_context)):
+    """Transmit one cleared payment's BAPI document. In simulated
+    mode (the default) the built-in simulator validates the
+    payload and assigns a SAPSIM number - the transmission record
+    says SIMULATED in plain words. In http mode the payload is
+    POSTed to the configured endpoint and the real response is
+    recorded, whatever it is."""
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    m = repo.latest_match_for_payment(body.payment_id)
+    if not m or m["status"] not in ("AUTO_POSTED", "APPROVED_POSTED"):
+        raise HTTPException(409, "only a cleared (posted) payment has a document to transmit")
+    res = m["result"] or {}
+    doc_id = (res.get("approval") or {}).get("erp_document_id") or \
+             document_number_for(m["match_id"])
+    customers = {i.invoice_id: i.customer for i in repo.all_invoices()}
+    doc = document_for_match(res, res.get("payment") or {"payment_id": body.payment_id},
+                             document_number=doc_id, customers=customers)
+    payload = doc.get("bapi_payload") or {}
+    settings = _integration_settings(repo)
+    mode = settings["sap_mode"]
+    if mode == "http":
+        import httpx
+        try:
+            r = httpx.post(settings["sap_endpoint"], json=payload, timeout=8.0)
+            ok = 200 <= r.status_code < 300
+            status = "SENT" if ok else "FAILED"
+            sap_no = (r.json().get("document_number") if ok and
+                      r.headers.get("content-type", "").startswith("application/json")
+                      else None)
+            detail = f"endpoint answered HTTP {r.status_code}"
+        except Exception as e:
+            status, sap_no, detail = "FAILED", None, f"endpoint unreachable: {str(e)[:160]}"
+    else:
+        sap_no, detail = _sap_simulator(payload)
+        status = "SIMULATED_POSTED" if sap_no else "FAILED"
+    tid = "TRX-" + uuid.uuid4().hex[:10].upper()
+    repo.add_transmission(tid, body.payment_id, doc_id, mode, status,
+                          sap_no, detail, _now_iso())
+    repo.audit(f"api:{ctx['role']}", "sap_transmitted", "payment", body.payment_id,
+               {"document_number": doc_id, "mode": mode, "status": status,
+                "sap_document_number": sap_no}, _now_iso())
+    return {"transmission_id": tid, "payment_id": body.payment_id,
+            "document_number": doc_id, "mode": mode, "status": status,
+            "sap_document_number": sap_no, "detail": detail}
+
+@app.get("/api/v1/erp/transmissions")
+def erp_transmissions(ctx=Depends(auth_context)):
+    need(ctx, "read")
+    return {"transmissions": repo_for(ctx["tenant_id"]).list_transmissions()}
+
+class WebhookIn(BaseModel):
+    url: str
+    events: str = "run.completed"
+
+@app.post("/api/v1/webhooks")
+def create_webhook(body: WebhookIn, ctx=Depends(auth_context)):
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    _guard_public_url(body.url)
+    events = {e.strip() for e in body.events.split(",") if e.strip()}
+    if not events or not events <= (_WEBHOOK_EVENTS | {"all"}):
+        raise HTTPException(422, f"events must be chosen from {sorted(_WEBHOOK_EVENTS)} or 'all'")
+    wid = "WH-" + uuid.uuid4().hex[:10].upper()
+    repo.add_webhook(wid, body.url, ",".join(sorted(events)), _now_iso())
+    return {"webhook_id": wid, "url": body.url, "events": sorted(events), "active": True}
+
+@app.get("/api/v1/webhooks")
+def list_webhooks_ep(ctx=Depends(auth_context)):
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    return {"webhooks": repo.list_webhooks(),
+            "deliveries": repo.list_deliveries(20),
+            "events_available": sorted(_WEBHOOK_EVENTS)}
+
+@app.delete("/api/v1/webhooks/{webhook_id}")
+def delete_webhook_ep(webhook_id: str, ctx=Depends(auth_context)):
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    if not repo.delete_webhook(webhook_id):
+        raise HTTPException(404, "webhook not found")
+    return {"deleted": webhook_id}
+
+class RemittanceFeedIn(BaseModel):
+    sender: str = ""
+    subject: str = ""
+    body: str
+
+@app.post("/api/v1/feeds/remittance")
+def remittance_feed(body: RemittanceFeedIn, ctx=Depends(auth_context)):
+    """The remittance mailbox connection point, in the shape an
+    inbound-email service (SES, Postmark, a mailroom scanner)
+    would POST: parse the advice with the same pipeline as the
+    Upload Center, stage the payment into the workspace for the
+    next run, and record the feed event. Staging is not matching:
+    the wire reconciles when a run includes it."""
+    need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
+    invs = repo.open_invoices()
+    out = parse_remittance(body.body, {i.invoice_id for i in invs},
+                           {i.po_number for i in invs if i.po_number})
+    f = out["fields"]
+    amount = int(f.get("amount_cents") or 0)
+    if amount <= 0:
+        repo.add_feed_event("remittance_mail",
+                            f"from {body.sender or 'unknown'}: no amount read, nothing staged",
+                            _now_iso())
+        raise HTTPException(422, "no payment amount could be read from the advice")
+    from domain import Payment as _Payment
+    pid = "MAIL-" + uuid.uuid4().hex[:8].upper()
+    refs = list(f.get("invoice_refs") or []) + list(f.get("po_refs") or [])
+    # The parser reads standard reference shapes; a mailbox triage
+    # also matches this workspace's own open invoice ids verbatim,
+    # so a house id format the regex does not know still links.
+    for inv in invs:
+        if inv.invoice_id in body.body and inv.invoice_id not in refs:
+            refs.append(inv.invoice_id)
+    repo.add_payment(_Payment(payment_id=pid, payer_raw=f.get("payer") or body.sender or "Unknown payer",
+                              amount_cents=amount, currency="USD",
+                              references=refs, remittance_text=body.body))
+    repo.add_feed_event("remittance_mail",
+                        f"from {body.sender or 'unknown'}: staged {pid} "
+                        f"${amount / 100:,.2f} from {f.get('payer') or 'unknown payer'} "
+                        f"via {out['source']} parse", _now_iso())
+    return {"staged_payment_id": pid, "amount_cents": amount,
+            "payer": f.get("payer"), "references": refs,
+            "parse_source": out["source"], "verified": out["verification"]["verified"]}
+
+@app.get("/api/v1/feeds/events")
+def feed_events(ctx=Depends(auth_context)):
+    need(ctx, "read")
+    return {"events": repo_for(ctx["tenant_id"]).list_feed_events()}
 
 # ---- Mail: send the product's drafts, with an honest outbox ----
 class MailSendIn(BaseModel):

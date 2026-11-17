@@ -1,56 +1,56 @@
-# Proof pack v1 - replay, evidence packs, success criteria
+# Integrations pack v1 - SAP write-back, webhooks, remittance feed
 
-Applies on top of the autonomy build (live). Suite: 234 passed
-on a clean solo run (229 + 5 new). Demo outcome unchanged.
+Applies on top of the proof pack (live). Suite: 242 passed on
+a clean solo run (234 + 8 new). Demo outcome unchanged.
 Logo untouched (logo-glass-ygqXbPkV). Vanilla untouched.
 
 ## What is inside
 
-1. Run replay (api.py; Run view gains a Proof panel under the
-   audit detail). POST /api/v1/runs/{id}/replay re-runs that
-   run's payments in an ephemeral scratch session and diffs
-   every payment: then vs now. The replay uses the policy a
-   fresh run would use now - the stored policy with any active
-   case overrides, resolved exactly as a live run resolves it -
-   and runs the full pipeline, including the autopilot pass, so
-   a policy change shows its true effect before anyone commits
-   to it. The scratch ledger is the current ledger with the
-   source run's settlements undone from its own records
-   (invoices settled by other runs stay settled); the source
-   workspace is never touched, and the scratch session is
-   reaped like any other ephemeral session.
-   Two behaviours the tests pin down: an unchanged-policy
-   replay of the demo run diffs to zero on all 16 payments;
-   and raising the tenant maker-checker threshold does NOT
-   flip the demo holds P7/P16, because the demo case's own
-   override governs while the case is active - the lever that
-   flips an outcome in replay is a real one (the test flips a
-   small partial via autonomy level 1, in the scratch only).
-2. Auditor evidence pack (Run view: Download evidence pack).
-   GET /api/v1/runs/{id}/evidence returns the run's complete
-   record: policy snapshot, every match with lines and
-   derivation, exceptions, the SAP documents, and the audit
-   entries touching the run - closed with a SHA-256 manifest
-   over the contents (every field except generated_at), so
-   any later edit to the pack is detectable. The manifest is
-   verified byte-for-byte in the tests.
-3. Success criteria - the contract view (Agent Health panel;
-   GET /api/v1/success-criteria). Five criteria computed from
-   the workspace's stored records, each with target, measured
-   actual and basis: touchless posting rate (target: the 70%
-   Hackett industry median), duplicate leakage (0), decisions
-   carrying a full derivation (100%), SAP documents balanced
-   (100%), exceptions carrying a recommended action (100%).
-   On the seeded demo case the touchless rate measures 62.5%
-   and shows WATCH, with an in-product note that the case is
-   deliberately adversarial - the criteria are measured, not
-   marketed.
+1. SAP write-back, built to the connection point (SAP view
+   gains a Write-back panel). POST /api/v1/erp/transmit sends
+   one cleared payment's BAPI document:
+   - Simulated mode (default): a built-in simulator validates
+     the payload the way a receiving system would - header
+     present, posting lines present, CURRENCYAMOUNT netting
+     to zero - and assigns a SAPSIM document number. Every
+     record and the UI say SIMULATED in plain words; no real
+     SAP system is claimed anywhere.
+   - HTTP mode: PUT /api/v1/integrations/settings with an
+     endpoint URL posts the real payload there and records
+     the real response, including failures ("endpoint
+     unreachable" is a recorded outcome, not a hidden one).
+   Transmissions are recorded per workspace (payment, document,
+   mode, status, SAP number) and clear with the workspace.
+   Only cleared payments can transmit; a held payment is 409.
+2. Webhooks (Agent Health gains an Integrations panel).
+   Per-tenant subscriptions (POST/GET/DELETE /api/v1/webhooks)
+   fire on run.completed, approval.decided,
+   dispute.transitioned and match.reversed. Delivery is
+   asynchronous and best-effort by design - a webhook can
+   never block or fail the operation that fired it - and every
+   attempt is logged with its HTTP status or error.
+   Registration refuses private, loopback and link-local URLs.
+3. Remittance mailbox feed. POST /api/v1/feeds/remittance, in
+   the shape an inbound-email service (SES, Postmark, a
+   mailroom scanner) would POST: the advice is parsed with the
+   Upload Center's pipeline, the workspace's open invoice ids
+   are additionally matched verbatim (a house id format the
+   parser's regex does not know still links), the payment is
+   staged into the workspace, and a feed event is recorded
+   (GET /api/v1/feeds/events, shown on Agent Health). Staging
+   is not matching: the wire reconciles when a run includes
+   it - the tests prove a mailed advice auto-posts on the
+   next run.
 
 ## Files
 
-Backend: api.py; tests: test_proof_pack.py (new).
-Frontend source: views/Run.tsx, views/Health.tsx.
-Built frontend: frontend/react/ (bundle index-C8iWcBhe.js)
+Backend: api.py, repository.py (four new tables:
+transmissions, webhooks, webhook_deliveries, feed_events,
+plus tenant_settings for connection config - all
+CREATE IF NOT EXISTS, safe on existing databases).
+Tests: test_integrations_pack.py (new).
+Frontend source: views/Sap.tsx, views/Health.tsx.
+Built frontend: frontend/react/ (bundle index-LQNBkEcN.js)
 + frontend/index.html re-copied.
 
 ## Deploy
