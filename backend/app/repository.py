@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS feed_events(
   created_at TEXT);
 CREATE TABLE IF NOT EXISTS tenant_settings(
   key TEXT PRIMARY KEY, value_json TEXT);
+CREATE TABLE IF NOT EXISTS portal_responses(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, dispute_id TEXT, stance TEXT,
+  note TEXT, created_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_matches_run ON matches(run_id);
 CREATE INDEX IF NOT EXISTS idx_matches_payment ON matches(payment_id);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
@@ -370,6 +373,9 @@ class Repository:
     def exceptions_for_run(self, run_id):
         rows = self.conn.execute("SELECT payment_id, kind, severity, recommended_action, detail_json, status FROM exceptions WHERE run_id=?", (run_id,)).fetchall()
         return [{"payment_id": r[0], "kind": r[1], "severity": r[2], "recommended_action": r[3], "detail": json.loads(r[4]), "status": r[5]} for r in rows]
+    def exceptions_for_payment(self, payment_id):
+        rows = self.conn.execute("SELECT payment_id, kind, severity, recommended_action, detail_json, status FROM exceptions WHERE payment_id=?", (payment_id,)).fetchall()
+        return [{"payment_id": r[0], "kind": r[1], "severity": r[2], "recommended_action": r[3], "detail": json.loads(r[4]), "status": r[5]} for r in rows]
     def matches_for_run(self, run_id):
         rows = self.conn.execute("SELECT match_id, payment_id, status, solver, residual_cents, confidence, result_json FROM matches WHERE run_id=?", (run_id,)).fetchall()
         return [{"match_id": r[0], "payment_id": r[1], "status": r[2], "solver": r[3], "residual_cents": r[4], "confidence": r[5], "result": json.loads(r[6])} for r in rows]
@@ -569,6 +575,16 @@ class Repository:
         return [{"id": r[0], "webhook_id": r[1], "event": r[2],
                  "status_code": r[3], "ok": bool(r[4]), "error": r[5],
                  "created_at": r[6]} for r in rows]
+
+    def add_portal_response(self, dispute_id, stance, note, ts):
+        self._x("INSERT INTO portal_responses (dispute_id, stance, note, created_at)"
+                " VALUES (?,?,?,?)", (dispute_id, stance, note, ts))
+
+    def list_portal_responses(self, dispute_id):
+        rows = self.conn.execute(
+            "SELECT stance, note, created_at FROM portal_responses"
+            " WHERE dispute_id=? ORDER BY id", (dispute_id,)).fetchall()
+        return [{"stance": r[0], "note": r[1], "created_at": r[2]} for r in rows]
 
     def add_feed_event(self, kind, summary, ts):
         self._x("INSERT INTO feed_events (kind, summary, created_at)"

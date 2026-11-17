@@ -27,6 +27,8 @@ class TenantStore:
         self.conn.execute("""CREATE TABLE IF NOT EXISTS api_keys (key_hash TEXT PRIMARY KEY, tenant_id TEXT,
                              role TEXT, label TEXT, created_at REAL, revoked INTEGER DEFAULT 0)""")
         self.conn.execute("CREATE TABLE IF NOT EXISTS tenant_policies (tenant_id TEXT PRIMARY KEY, policy_json TEXT)")
+        self.conn.execute("""CREATE TABLE IF NOT EXISTS portal_tokens (token_hash TEXT PRIMARY KEY, link_id TEXT,
+                             tenant_id TEXT, customer TEXT, created_at REAL, revoked INTEGER DEFAULT 0)""")
         self.conn.commit()
 
     def create_tenant(self, name):
@@ -77,6 +79,40 @@ class TenantStore:
         with self.lock:
             row = self.conn.execute("SELECT policy_json FROM tenant_policies WHERE tenant_id=?", (tenant_id,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    # -- payer portal links: hashed tokens, one customer each --
+    def create_portal_token(self, tenant_id, customer):
+        raw = "ptk_" + secrets.token_urlsafe(32)
+        link_id = "PT-" + secrets.token_hex(4).upper()
+        with self.lock:
+            self.conn.execute("INSERT INTO portal_tokens VALUES (?,?,?,?,?,0)",
+                              (_hash(raw), link_id, tenant_id, customer, time.time()))
+            self.conn.commit()
+        return raw, link_id
+
+    def resolve_portal_token(self, raw):
+        if not raw: return None
+        with self.lock:
+            row = self.conn.execute(
+                "SELECT tenant_id, customer FROM portal_tokens WHERE token_hash=? AND revoked=0",
+                (_hash(raw),)).fetchone()
+        return {"tenant_id": row[0], "customer": row[1]} if row else None
+
+    def list_portal_tokens(self, tenant_id):
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT link_id, customer, created_at, revoked FROM portal_tokens"
+                " WHERE tenant_id=? ORDER BY created_at", (tenant_id,)).fetchall()
+        return [{"link_id": r[0], "customer": r[1], "created_at": r[2],
+                 "revoked": bool(r[3])} for r in rows]
+
+    def revoke_portal_token(self, tenant_id, link_id):
+        with self.lock:
+            cur = self.conn.execute(
+                "UPDATE portal_tokens SET revoked=1 WHERE tenant_id=? AND link_id=? AND revoked=0",
+                (tenant_id, link_id))
+            self.conn.commit()
+            return cur.rowcount > 0
 
     def db_path(self, tenant_id):
         return os.path.join(self.base_dir, f"{tenant_id}.db")

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your account - SlateMatch payer portal</title>
+<style>
+  :root { --bg:#232323; --panel:#2a2a2a; --panel2:#1d1d1d; --line:#3d3d3d;
+          --ink:#f2f2f2; --mut:#a8a8a8; --blue:#3D75E8; --ok:#4caf7d; --warn:#e0a83c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family: Inter, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 18px 60px; }
+  header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+  .brand { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .brand span { color: var(--blue); }
+  .who { color: var(--mut); font-size: 14px; }
+  h2 { font-size: 17px; margin: 30px 0 6px; }
+  .sub { color: var(--mut); font-size: 13.5px; margin: 0 0 12px; line-height: 1.55; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 16px 18px; margin-top: 12px; }
+  table { width:100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align:left; color: var(--mut); font-weight: 600; font-size: 12px;
+       text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px 6px 0; }
+  td { padding: 8px 8px 8px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pill { display:inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px;
+          border: 1px solid var(--line); white-space: nowrap; }
+  .pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); }
+  button { background: var(--blue); color: #fff; border: 0; padding: 8px 14px;
+           font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+  button:disabled { opacity: .55; cursor: default; }
+  input, select, textarea { background: var(--panel2); border: 1px solid var(--line);
+    color: var(--ink); font: inherit; font-size: 14px; padding: 8px 10px; }
+  textarea { width: 100%; min-height: 110px; resize: vertical; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .note { font-size: 13px; color: var(--mut); line-height: 1.55; }
+  .msg { font-size: 13.5px; margin-top: 10px; }
+  .msg.ok { color: var(--ok); }
+  footer { margin-top: 44px; color: var(--mut); font-size: 12.5px; line-height: 1.6;
+           border-top: 1px solid var(--line); padding-top: 14px; }
+  .err { background: var(--panel); border: 1px solid var(--line); padding: 22px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">s<span>/</span>ate match</div>
+    <div class="who" id="who">Loading your account...</div>
+  </header>
+  <div id="app"></div>
+  <div id="badlink" class="err" style="display:none">
+    <b>This link is not active.</b>
+    <p class="note">It may have been replaced or switched off by our team.
+    Please contact us and we will send you a fresh link.</p>
+  </div>
+  <footer>
+    This is your private account link - please do not forward it. It shows only
+    your company's invoices, payments and disputes with us, and nothing else.
+    Powered by SlateMatch, autonomous cash application.
+  </footer>
+</div>
+<script>
+const token = location.pathname.split("/").filter(Boolean).pop();
+const api = (path, opts) => fetch("/api/v1/portal/" + token + path, opts).then(async r => {
+  if (!r.ok) throw new Error((await r.text()).slice(0, 200));
+  return r.json();
+});
+const money = c => "$" + (Math.abs(c || 0) / 100).toLocaleString("en-US", {minimumFractionDigits: 2});
+const esc = s => String(s ?? "").replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+
+let data = null;
+async function load() {
+  try { data = await api("/summary"); }
+  catch { document.getElementById("badlink").style.display = "block";
+          document.getElementById("who").textContent = ""; return; }
+  document.getElementById("who").textContent = "Account for " + data.customer;
+  render();
+}
+function render() {
+  const el = document.getElementById("app");
+  const inv = data.open_invoices, pay = data.payments, dis = data.disputes;
+  let h = "";
+  h += `<h2>Open invoices</h2><p class="sub">These invoices are currently open on your account. If a payment is already on its way, you can tell us the date below and we will watch for it.</p>`;
+  if (!inv.length) h += `<div class="card">Nothing is open right now. Thank you.</div>`;
+  for (const i of inv) {
+    h += `<div class="card"><table><tr><th>Invoice</th><th>Amount due</th><th>Due</th><th></th></tr>
+      <tr><td><b>${esc(i.invoice_id)}</b>${i.po_number ? `<br><span class="note">Your PO: ${esc(i.po_number)}</span>` : ""}
+      ${i.partial ? `<br><span class="note">Part paid: ${money(i.partial.applied_cents)} of ${money(i.partial.original_cents)}</span>` : ""}</td>
+      <td class="money"><b>${money(i.amount_due_cents)}</b></td>
+      <td>${i.due_in_days < 0 ? Math.abs(i.due_in_days) + " days overdue" : "in " + i.due_in_days + " days"}</td>
+      <td><div class="row" style="margin-top:0">
+        <input type="date" id="pd-${esc(i.invoice_id)}">
+        <button class="ghost" onclick="promise('${esc(i.invoice_id)}')">Promise to pay</button>
+      </div><div class="msg" id="pm-${esc(i.invoice_id)}"></div></td></tr></table></div>`;
+  }
+  h += `<h2>Your payments</h2><p class="sub">Payments we have received from you and where each one stands.</p>`;
+  if (!pay.length) h += `<div class="card">No payments recorded yet.</div>`;
+  else {
+    h += `<div class="card"><table><tr><th>Payment</th><th>Amount</th><th>Status</th></tr>`;
+    for (const p of pay) h += `<tr><td><b>${esc(p.payment_id)}</b></td><td class="money">${money(p.amount_cents)}</td>
+      <td><span class="pill ${p.status.includes("POSTED") ? "ok" : "warn"}">${esc(p.status_label)}</span></td></tr>`;
+    h += `</table></div>`;
+  }
+  if (dis.length) {
+    h += `<h2>Deductions under review</h2><p class="sub">We are reviewing these deductions. You can accept a claim, send us evidence, or ask a question - your response goes straight to our team. The decision itself is always made by our team.</p>`;
+    for (const d of dis) {
+      h += `<div class="card"><b>${esc(d.dispute_id)}</b> - claim of <b>${money(d.claimed_cents)}</b>
+        ${d.reason_code ? "(" + esc(d.reason_code) + ")" : ""} - status: <b>${esc(d.status)}</b>
+        ${d.responses.map(r => `<p class="note">Your response (${esc(r.stance)}): ${esc(r.note)}</p>`).join("")}
+        <div class="row">
+          <select id="st-${esc(d.dispute_id)}">
+            <option value="evidence">Send evidence</option>
+            <option value="accepted">Accept the claim</option>
+            <option value="question">Ask a question</option>
+          </select>
+          <input id="nt-${esc(d.dispute_id)}" placeholder="Your note" style="flex:1; min-width:220px">
+          <button class="ghost" onclick="respond('${esc(d.dispute_id)}')">Send response</button>
+        </div><div class="msg" id="rm-${esc(d.dispute_id)}"></div></div>`;
+    }
+  }
+  h += `<h2>Send remittance advice</h2><p class="sub">Paying by wire? Paste your remittance advice here and we will match it to your invoices when the money arrives.</p>
+    <div class="card"><textarea id="remit" placeholder="Example: Payment of $12,000.00 against invoice INV-1001 from ${esc(data.customer)}"></textarea>
+    <div class="row"><button onclick="sendRemit()">Send advice</button></div>
+    <div class="msg" id="remit-msg"></div></div>`;
+  el.innerHTML = h;
+}
+async function promise(inv) {
+  const d = document.getElementById("pd-" + inv).value;
+  const m = document.getElementById("pm-" + inv);
+  if (!d) { m.textContent = "Please pick the date you expect to pay."; return; }
+  try { const r = await api("/promise", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({invoice_id: inv, promised_date: d})});
+    m.className = "msg ok"; m.textContent = r.message; }
+  catch (e) { m.textContent = "That did not go through - please try again."; }
+}
+async function respond(did) {
+  const stance = document.getElementById("st-" + did).value;
+  const note = document.getElementById("nt-" + did).value;
+  const m = document.getElementById("rm-" + did);
+  try { const r = await api("/disputes/" + did + "/respond", {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({stance, note})});
+    m.className = "msg ok"; m.textContent = r.message; load(); }
+  catch (e) { m.textContent = "That did not go through - please try again."; }
+}
+async function sendRemit() {
+  const text = document.getElementById("remit").value;
+  const m = document.getElementById("remit-msg");
+  if (!text.trim()) { m.textContent = "Please paste your remittance advice first."; return; }
+  try { const r = await api("/remittance", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text})});
+    m.className = "msg ok"; m.textContent = r.message; load(); }
+  catch (e) { m.textContent = "We could not read a payment amount from that advice - please check it mentions the amount and your invoice numbers."; }
+}
+load();
+</script>
+</body>
+</html>

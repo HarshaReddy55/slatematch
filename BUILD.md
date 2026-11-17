@@ -1,57 +1,58 @@
-# Integrations pack v1 - SAP write-back, webhooks, remittance feed
+# Portal pack v1 - the payer portal
 
-Applies on top of the proof pack (live). Suite: 242 passed on
-a clean solo run (234 + 8 new). Demo outcome unchanged.
-Logo untouched (logo-glass-ygqXbPkV). Vanilla untouched.
+Applies on top of the proof pack or the integrations pack
+(the backend and Health files are whole-file supersets of
+both). Suite: 248 passed on a clean solo run (242 + 6 new).
+Demo outcome unchanged. Logo untouched. Vanilla untouched.
 
 ## What is inside
 
-1. SAP write-back, built to the connection point (SAP view
-   gains a Write-back panel). POST /api/v1/erp/transmit sends
-   one cleared payment's BAPI document:
-   - Simulated mode (default): a built-in simulator validates
-     the payload the way a receiving system would - header
-     present, posting lines present, CURRENCYAMOUNT netting
-     to zero - and assigns a SAPSIM document number. Every
-     record and the UI say SIMULATED in plain words; no real
-     SAP system is claimed anywhere.
-   - HTTP mode: PUT /api/v1/integrations/settings with an
-     endpoint URL posts the real payload there and records
-     the real response, including failures ("endpoint
-     unreachable" is a recorded outcome, not a hidden one).
-   Transmissions are recorded per workspace (payment, document,
-   mode, status, SAP number) and clear with the workspace.
-   Only cleared payments can transmit; a held payment is 409.
-2. Webhooks (Agent Health gains an Integrations panel).
-   Per-tenant subscriptions (POST/GET/DELETE /api/v1/webhooks)
-   fire on run.completed, approval.decided,
-   dispute.transitioned and match.reversed. Delivery is
-   asynchronous and best-effort by design - a webhook can
-   never block or fail the operation that fired it - and every
-   attempt is logged with its HTTP status or error.
-   Registration refuses private, loopback and link-local URLs.
-3. Remittance mailbox feed. POST /api/v1/feeds/remittance, in
-   the shape an inbound-email service (SES, Postmark, a
-   mailroom scanner) would POST: the advice is parsed with the
-   Upload Center's pipeline, the workspace's open invoice ids
-   are additionally matched verbatim (a house id format the
-   parser's regex does not know still links), the payment is
-   staged into the workspace, and a feed event is recorded
-   (GET /api/v1/feeds/events, shown on Agent Health). Staging
-   is not matching: the wire reconciles when a run includes
-   it - the tests prove a mailed advice auto-posts on the
-   next run.
+The payer portal: a per-customer, token-scoped window into
+the workspace, in plain payer language.
+
+Operator side (Agent Health, Integrations panel):
+POST /api/v1/portal-links mints a link for one customer
+(name exactly as on their invoices). The raw token is shown
+ONCE in the console at creation; only its SHA-256 hash is
+stored (control store, same pattern as API keys). Links are
+listed by id and customer, and revocation is immediate.
+
+Payer side: the link opens /portal/<token>, a standalone
+page (frontend/portal.html, no console shell) that shows
+exactly that customer's slice:
+- Open invoices with amounts due and part-paid notes, each
+  with a promise-to-pay date control. A promise lands in the
+  same promises ledger the collections view derives KEPT /
+  BROKEN status from.
+- Their payments with plain-language statuses (Posted /
+  With our team for approval / Received - awaiting
+  reconciliation / Held - looks like a duplicate).
+- Their disputes, with a response form (accept / send
+  evidence / ask a question). A response is recorded as
+  evidence and shown back to the payer; it never changes
+  the claim's status - the decision stays with the operator,
+  and the page says so.
+- A remittance advice box: parsed with the Upload Center's
+  pipeline plus verbatim open-invoice matching, staged as a
+  PORTAL- payment that reconciles on the next run.
+
+Scoping is structural, not cosmetic: every portal query
+filters to the token's tenant and customer; another
+customer's invoice or dispute answers 404 (never a
+permission error that confirms it exists). Bad or revoked
+tokens answer 401 and the page shows a plain "link not
+active" message. Portal activity (remittance, promises,
+dispute responses) is recorded as feed events on Agent
+Health, so the operator sees it without opening the portal.
 
 ## Files
 
-Backend: api.py, repository.py (four new tables:
-transmissions, webhooks, webhook_deliveries, feed_events,
-plus tenant_settings for connection config - all
-CREATE IF NOT EXISTS, safe on existing databases).
-Tests: test_integrations_pack.py (new).
-Frontend source: views/Sap.tsx, views/Health.tsx.
-Built frontend: frontend/react/ (bundle index-LQNBkEcN.js)
-+ frontend/index.html re-copied.
+Backend: api.py, repository.py (portal_responses table +
+an exceptions_for_payment helper), tenants.py (portal
+token store). Tests: test_portal_pack.py (new).
+Frontend: frontend/portal.html (new), views/Health.tsx,
+frontend/react/ rebuilt (bundle index-DGPU5MJO.js),
+frontend/index.html re-copied.
 
 ## Deploy
 

@@ -2223,6 +2223,184 @@ def feed_events(ctx=Depends(auth_context)):
     need(ctx, "read")
     return {"events": repo_for(ctx["tenant_id"]).list_feed_events()}
 
+# ---- Payer portal: token-scoped, one customer, nothing else ----
+
+def _portal_scope(token):
+    """A portal link resolves to exactly one tenant and one
+    customer. The raw token is never stored (SHA-256 hash only,
+    in the control store, like API keys), and revocation is
+    immediate. Every portal query below filters to that customer
+    and nothing else in the tenant is reachable through it."""
+    info = store.resolve_portal_token(token)
+    if not info:
+        raise HTTPException(401, "this portal link is invalid or has been revoked")
+    return info
+
+def _portal_payments(repo, customer):
+    """The customer's payments: any payment whose match touches
+    one of the customer's invoices, plus payments carrying the
+    customer's own name as payer. Status is given raw and in
+    plain words for the payer."""
+    cust_invoices = {i.invoice_id for i in repo.all_invoices()
+                     if i.customer == customer}
+    norm = " ".join(customer.lower().split())
+    out = []
+    for p in repo.all_payments():
+        m = repo.latest_match_for_payment(p.payment_id)
+        touches = bool(m and any(l.get("invoice_id") in cust_invoices
+                                 for l in (m["result"] or {}).get("lines") or []))
+        if not touches and " ".join((p.payer_raw or "").lower().split()) != norm:
+            continue
+        status = m["status"] if m else "RECEIVED"
+        label = {"AUTO_POSTED": "Posted", "APPROVED_POSTED": "Posted",
+                 "PROPOSED": "With our team for approval",
+                 "REVERSED": "Reversed",
+                 "RECEIVED": "Received - awaiting reconciliation"}.get(status, status)
+        exc = [e for e in repo.exceptions_for_payment(p.payment_id)] \
+            if hasattr(repo, "exceptions_for_payment") else []
+        if any(e["kind"] == "DUPLICATE_PAYMENT" for e in exc):
+            label = "Held - looks like a duplicate of another payment"
+        out.append({"payment_id": p.payment_id, "amount_cents": p.amount_cents,
+                    "status": status, "status_label": label,
+                    "references": p.references or []})
+    return out
+
+@app.get("/api/v1/portal/{token}/summary")
+def portal_summary(token: str):
+    info = _portal_scope(token); repo = repo_for(info["tenant_id"])
+    customer = info["customer"]
+    invoices = [{"invoice_id": r["invoice_id"], "amount_due_cents": r["gross_cents"],
+                 "due_in_days": r["due_in_days"], "po_number": r.get("po_number"),
+                 "partial": r.get("partial")}
+                for r in _attach_partials(repo, [asdict(i) for i in repo.open_invoices()])
+                if r["customer"] == customer]
+    payments = _portal_payments(repo, customer)
+    pay_ids = {p["payment_id"] for p in payments}
+    disputes = [{"dispute_id": d["dispute_id"], "payment_id": d["payment_id"],
+                 "claimed_cents": d["claimed_cents"], "reason_code": d["reason_code"],
+                 "status": d["status"],
+                 "responses": repo.list_portal_responses(d["dispute_id"])}
+                for d in repo.list_disputes() if d["payment_id"] in pay_ids]
+    return {"customer": customer, "open_invoices": invoices,
+            "payments": payments, "disputes": disputes,
+            "note": "This link shows only your company's invoices, payments "
+                    "and disputes with us. It cannot see anything else."}
+
+class PortalRemittanceIn(BaseModel):
+    text: str
+
+@app.post("/api/v1/portal/{token}/remittance")
+def portal_remittance(token: str, body: PortalRemittanceIn):
+    info = _portal_scope(token); repo = repo_for(info["tenant_id"])
+    customer = info["customer"]
+    invs = [i for i in repo.open_invoices() if i.customer == customer]
+    out = parse_remittance(body.text, {i.invoice_id for i in invs},
+                           {i.po_number for i in invs if i.po_number})
+    f = out["fields"]
+    amount = int(f.get("amount_cents") or 0)
+    if amount <= 0:
+        raise HTTPException(422, "we could not read a payment amount from that advice")
+    from domain import Payment as _Payment
+    pid = "PORTAL-" + uuid.uuid4().hex[:8].upper()
+    refs = list(f.get("invoice_refs") or []) + list(f.get("po_refs") or [])
+    for inv in invs:
+        if inv.invoice_id in body.text and inv.invoice_id not in refs:
+            refs.append(inv.invoice_id)
+    repo.add_payment(_Payment(payment_id=pid, payer_raw=customer,
+                              amount_cents=amount, currency="USD",
+                              references=refs, remittance_text=body.text))
+    repo.add_feed_event("portal_remittance",
+                        f"{customer} via portal: staged {pid} ${amount / 100:,.2f}",
+                        _now_iso())
+    return {"staged_payment_id": pid, "amount_cents": amount, "references": refs,
+            "message": "Thank you - your remittance advice is with our team and "
+                       "will be reconciled on the next payment run."}
+
+class PortalPromiseIn(BaseModel):
+    invoice_id: str
+    promised_date: str
+    note: str = ""
+
+@app.post("/api/v1/portal/{token}/promise")
+def portal_promise(token: str, body: PortalPromiseIn):
+    info = _portal_scope(token); repo = repo_for(info["tenant_id"])
+    customer = info["customer"]
+    inv = next((i for i in repo.open_invoices()
+                if i.invoice_id == body.invoice_id and i.customer == customer), None)
+    if inv is None:
+        raise HTTPException(404, "that invoice is not open for your company")
+    import re as _re2
+    if not _re2.fullmatch(r"\d{4}-\d{2}-\d{2}", body.promised_date or ""):
+        raise HTTPException(422, "promised_date must be YYYY-MM-DD")
+    repo.add_promise(inv.invoice_id, customer, inv.gross_cents,
+                     body.promised_date, body.note or "Promised via the payer portal",
+                     _now_iso())
+    repo.add_feed_event("portal_promise",
+                        f"{customer} via portal: promised {inv.invoice_id} by {body.promised_date}",
+                        _now_iso())
+    return {"invoice_id": inv.invoice_id, "promised_date": body.promised_date,
+            "message": "Thank you - your promise to pay has been recorded."}
+
+class PortalRespondIn(BaseModel):
+    stance: str
+    note: str = ""
+
+@app.post("/api/v1/portal/{token}/disputes/{dispute_id}/respond")
+def portal_respond(token: str, dispute_id: str, body: PortalRespondIn):
+    info = _portal_scope(token); repo = repo_for(info["tenant_id"])
+    customer = info["customer"]
+    pay_ids = {p["payment_id"] for p in _portal_payments(repo, customer)}
+    d = next((x for x in repo.list_disputes()
+              if x["dispute_id"] == dispute_id and x["payment_id"] in pay_ids), None)
+    if d is None:
+        raise HTTPException(404, "that dispute is not one of your company's")
+    if body.stance not in ("accepted", "evidence", "question"):
+        raise HTTPException(422, "stance must be accepted, evidence or question")
+    repo.add_portal_response(dispute_id, body.stance, body.note, _now_iso())
+    repo.add_feed_event("portal_dispute_response",
+                        f"{customer} via portal: responded to {dispute_id} ({body.stance})",
+                        _now_iso())
+    return {"dispute_id": dispute_id,
+            "message": "Thank you - your response is recorded and will be "
+                       "reviewed by our team. The claim status itself is "
+                       "decided by our team, not by this form."}
+
+class PortalLinkIn(BaseModel):
+    customer: str
+
+@app.post("/api/v1/portal-links")
+def create_portal_link(body: PortalLinkIn, ctx=Depends(auth_context)):
+    need(ctx, "approve")
+    if not (body.customer or "").strip():
+        raise HTTPException(422, "customer name is required")
+    raw, link_id = store.create_portal_token(ctx["tenant_id"], body.customer.strip())
+    return {"link_id": link_id, "customer": body.customer.strip(),
+            "url": f"/portal/{raw}",
+            "note": "This link is shown once. Anyone holding it sees this "
+                    "customer's invoices, payments and disputes - share it "
+                    "only with that customer."}
+
+@app.get("/api/v1/portal-links")
+def list_portal_links(ctx=Depends(auth_context)):
+    need(ctx, "read")
+    return {"links": store.list_portal_tokens(ctx["tenant_id"])}
+
+@app.delete("/api/v1/portal-links/{link_id}")
+def revoke_portal_link(link_id: str, ctx=Depends(auth_context)):
+    need(ctx, "approve")
+    if not store.revoke_portal_token(ctx["tenant_id"], link_id):
+        raise HTTPException(404, "link not found or already revoked")
+    return {"revoked": link_id}
+
+from fastapi.responses import FileResponse as _FileResponse
+
+@app.get("/portal/{token}")
+def portal_page(token: str):
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "portal.html")
+    if not os.path.isfile(path):
+        raise HTTPException(404, "portal page not installed")
+    return _FileResponse(os.path.abspath(path), media_type="text/html")
+
 # ---- Mail: send the product's drafts, with an honest outbox ----
 class MailSendIn(BaseModel):
     to: str; subject: str; body: str; kind: str = "other"; ref_id: str = ""

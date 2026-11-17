@@ -50,6 +50,7 @@ interface HealthData {
   webhooks: WebhookRow[];
   deliveries: DeliveryRow[];
   feedEvents: FeedEventRow[];
+  portalLinks: { link_id: string; customer: string; revoked: boolean }[];
 }
 
 interface BehaviourProfile {
@@ -135,6 +136,9 @@ export default function Health() {
   const [hookUrl, setHookUrl] = useState("");
   const [hookEvents, setHookEvents] = useState("run.completed");
   const [hookNote, setHookNote] = useState("");
+  const [portalCustomer, setPortalCustomer] = useState("");
+  const [portalUrl, setPortalUrl] = useState("");
+  const [portalNote, setPortalNote] = useState("");
   const [selRun, setSelRun] = useState<number | null>(null);
   const reduce = useReducedMotion();
 
@@ -145,7 +149,7 @@ export default function Health() {
         api<HealthFull>("/health"),
         api<ReadyData>("/ready"),
       ]);
-      const [diag, audit, runs, profiles, trend, criteriaPack, hooksPack, feedPack] = await Promise.all([
+      const [diag, audit, runs, profiles, trend, criteriaPack, hooksPack, feedPack, portalPack] = await Promise.all([
         api<Diagnostics>("/api/v1/diagnostics").catch(() => null),
         api<AuditEntry[]>("/api/v1/audit").catch(() => [] as AuditEntry[]),
         api<RunSummary[]>("/api/v1/runs").catch(() => [] as RunSummary[]),
@@ -159,6 +163,8 @@ export default function Health() {
           .catch(() => ({ webhooks: [] as WebhookRow[], deliveries: [] as DeliveryRow[] })),
         api<{ events: FeedEventRow[] }>("/api/v1/feeds/events")
           .catch(() => ({ events: [] as FeedEventRow[] })),
+        api<{ links: { link_id: string; customer: string; revoked: boolean }[] }>("/api/v1/portal-links")
+          .catch(() => ({ links: [] })),
       ]);
       // Held counts come from each run's own matches payload (PROPOSED
       // rows), the same records the Status Bar colour rule reads.
@@ -183,6 +189,7 @@ export default function Health() {
         webhooks: hooksPack.webhooks || [],
         deliveries: hooksPack.deliveries || [],
         feedEvents: feedPack.events || [],
+        portalLinks: portalPack.links || [],
         criteriaNote: criteriaPack.note || "",
       });
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
@@ -717,6 +724,89 @@ export default function Health() {
               <p className="text-sm text-mut mb-0 mt-2">
                 No webhooks registered and no feed events yet.
               </p>
+            )}
+            <p className="text-[13px] m-0 mt-5 mb-1">
+              <b>Payer portal links</b>
+            </p>
+            <p className="text-[12.5px] text-mut m-0">
+              A portal link shows one customer only their own open invoices,
+              payment statuses and disputes, and lets them send remittance
+              advice, promise a payment date, and respond to a deduction
+              claim. The token is stored hashed and the full link is shown
+              once - share it only with that customer. Revoking is immediate.
+            </p>
+            <div className="flex items-end gap-2 flex-wrap mt-2">
+              <label className="flex flex-col gap-1 text-[12px] text-mut">
+                Customer name (exactly as on their invoices)
+                <input
+                  value={portalCustomer}
+                  onChange={(e) => setPortalCustomer(e.target.value)}
+                  placeholder="e.g. BluePeak Electronics"
+                  className="bg-panel2 border border-line text-ink text-[13px] px-2.5 py-1.5 w-[300px]"
+                />
+              </label>
+              <GhostBtn
+                onClick={async () => {
+                  setPortalNote("");
+                  setPortalUrl("");
+                  try {
+                    const d = await api<{ url: string }>("/api/v1/portal-links", {
+                      method: "POST",
+                      body: JSON.stringify({ customer: portalCustomer }),
+                    });
+                    setPortalUrl(window.location.origin + d.url);
+                    setPortalCustomer("");
+                    load();
+                  } catch (e) {
+                    setPortalNote(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Create portal link
+              </GhostBtn>
+              {portalNote && <span className="text-[12.5px] text-mut">{portalNote}</span>}
+            </div>
+            {portalUrl && (
+              <p className="text-[13px] m-0 mt-2">
+                Link (shown once):{" "}
+                <span className="font-mono text-[12px] break-all">{portalUrl}</span>
+              </p>
+            )}
+            {data.portalLinks.length > 0 && (
+              <DataTable
+                head={
+                  <>
+                    <Th>Link</Th>
+                    <Th>Customer</Th>
+                    <Th>Status</Th>
+                    <Th>{""}</Th>
+                  </>
+                }
+              >
+                {data.portalLinks.map((l) => (
+                  <Row key={l.link_id}>
+                    <Td className="font-mono text-[12px]">{l.link_id}</Td>
+                    <Td>{l.customer}</Td>
+                    <Td>
+                      <Pill kind={l.revoked ? "bad" : "ok"}>
+                        {l.revoked ? "REVOKED" : "ACTIVE"}
+                      </Pill>
+                    </Td>
+                    <Td>
+                      {!l.revoked && (
+                        <GhostBtn
+                          onClick={async () => {
+                            await api(`/api/v1/portal-links/${l.link_id}`, { method: "DELETE" }).catch(() => {});
+                            load();
+                          }}
+                        >
+                          Revoke
+                        </GhostBtn>
+                      )}
+                    </Td>
+                  </Row>
+                ))}
+              </DataTable>
             )}
           </Panel>
           </Rise>
