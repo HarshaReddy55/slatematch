@@ -23,7 +23,7 @@ from seed import seed_invoices, seed_payments, GROUND_TRUTH
 import ml as mlmod
 from forecast import forecast_cash_in, prioritise_collections
 from mail import mail_config, mail_config_public, reminder_draft, reminder_tone, send_mail, settlement_draft
-from erp_sap import build_posting_document, document_for_match, dispute_accrual_journal, document_number_for
+from erp_sap import build_posting_document, document_for_match, dispute_accrual_journal, document_number_for, build_oracle_payload, build_netsuite_payload
 import rust_bridge
 
 def _env(name, default=""):
@@ -196,6 +196,7 @@ def seed(ctx=Depends(auth_context)):
     # was reconciled in a previous seed is not "already reconciled"
     # here - it was never staged here).
     repo.clear_workspace()
+    _criteria_cache.pop(ctx["tenant_id"], None)
     invs = seed_invoices()
     for inv in invs: repo.add_invoice(inv)
     pays = seed_payments()
@@ -273,6 +274,9 @@ def _load_case(repo, cid, actor):
                 expect[pid] = {k: (sorted(v) if isinstance(v, (set, list)) and k == "invoices" else v)
                                for k, v in e.items()}
     repo.clear_workspace()
+    for _tid, _r in list(_repos.items()):
+        if _r is repo:
+            _criteria_cache.pop(_tid, None)
     for inv in invs: repo.add_invoice(inv)
     for p in pays: repo.add_payment(p, payment_fingerprint(p))
     meta = {"id": cid, "name": name, "source": source,
@@ -380,10 +384,29 @@ def _finish_run_outputs(repo, run):
         pass
     # Integrations fan-out (guarded inside _fire_webhooks): the
     # run is complete and its outputs are composed.
+    try:
+        _held = [m for m in repo.matches_for_run(run_id) if m["status"] == "PROPOSED"]
+    except Exception:
+        _held = []
     _fire_webhooks(repo, "run.completed",
                    {"run_id": run_id, "payments": (run or {}).get("payments"),
                     "auto_posted": (run or {}).get("auto_posted"),
-                    "held": (run or {}).get("held")})
+                    "held": len(_held)})
+    # Chat approvals: when the run leaves work for humans and chat
+    # targets are configured, the held items are summarised there
+    # with a pointer back to the console, where decisions happen.
+    try:
+        if _held:
+            _pays = {p.payment_id: p for p in repo.all_payments()}
+            _lines = [f"SlateMatch: run {run_id} left {len(_held)} payment(s) waiting for approval:"]
+            for m in _held[:10]:
+                p = _pays.get(m["payment_id"])
+                _lines.append(f"- {m['payment_id']} {p.payer_raw if p else ''} "
+                              f"${(p.amount_cents if p else 0) / 100:,.2f}")
+            _lines.append("Decide in the console: Run Reconciliation, approvals queue.")
+            _fire_chat(repo, "\n".join(_lines))
+    except Exception:
+        pass
 
 @app.post("/api/v1/cases/{cid}/load")
 def load_case(cid: str, ctx=Depends(auth_context)):
@@ -422,6 +445,7 @@ def workspace_run(ctx=Depends(auth_context)):
 def workspace_reset(ctx=Depends(auth_context)):
     need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
     repo.clear_workspace()
+    _criteria_cache.pop(ctx["tenant_id"], None)
     repo.audit(f"api:{ctx['role']}", "workspace_reset", "workspace", "", {}, _now_iso())
     return _workspace_state(repo)
 
@@ -617,6 +641,7 @@ def import_invoices(payload: dict, ctx=Depends(auth_context)):
     out = parse_invoices_csv(payload.get("csv_text", ""))
     if mode == "replace":
         repo.clear_workspace()
+    _criteria_cache.pop(ctx["tenant_id"], None)
     skipped_settled = []
     if mode == "append":
         # A settled invoice belongs to a posted document. Re-importing
@@ -855,6 +880,7 @@ def load_custom_case(payload: dict, ctx=Depends(auth_context)):
                  references=list(p.get("references", []) or [])) for p in payload.get("payments", [])]
     if not invs or not pays: raise HTTPException(400, "a case needs at least one invoice and one payment")
     repo.clear_workspace()
+    _criteria_cache.pop(ctx["tenant_id"], None)
     for inv in invs: repo.add_invoice(inv)
     for p in pays: repo.add_payment(p, payment_fingerprint(p))
     repo.set_meta("active_case", {"id": "custom", "name": "Custom case (builder)", "source": "custom",
@@ -942,7 +968,7 @@ def run_stream(body: StreamIn, ctx=Depends(auth_context)):
             # its matches, decisions and drafts - is never touched.
             import tempfile, shutil as _sh2
             _td2 = tempfile.mkdtemp(prefix="slatematch-replay-")
-            trepo = Repository(os.path.join(_td2, "replay.db"))
+            trepo = Repository(os.path.join(_td2, "replay.db"), force_sqlite=True)
             for inv in repo.all_invoices(): trepo.add_invoice(inv)
             for p0 in repo.all_payments(): trepo.add_payment(p0, "")
             for row in repo.conn.execute("SELECT raw_name, customer, source FROM aliases").fetchall():
@@ -1128,6 +1154,7 @@ def match_decision(match_id: str, body: DecisionIn, ctx=Depends(auth_context)):
         repo.rollback()
         raise
     repo.commit()
+    _criteria_cache.pop(ctx["tenant_id"], None)
     _fire_webhooks(repo, "approval.decided",
                    {"match_id": match_id, "payment_id": m["payment_id"],
                     "decision": body.decision, "status": new_status})
@@ -1611,6 +1638,7 @@ def reverse_match(match_id: str, ctx=Depends(auth_context)):
         out = reverse_autopilot(repo, match_id, f"api:{ctx['role']}", _now_iso)
     except ValueError as e:
         raise HTTPException(409, str(e))
+    _criteria_cache.pop(ctx["tenant_id"], None)
     _fire_webhooks(repo, "match.reversed",
                    {"match_id": match_id, "restored_invoices": out.get("restored_invoices")})
     return out
@@ -1785,14 +1813,22 @@ def evaluations_trend(ctx=Depends(auth_context)):
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     snaps = repo.list_eval_snapshots()
+    _new_snap = False
     if not snaps or not str(snaps[-1]["ts"]).startswith(today):
         repo.add_eval_snapshot(_now_iso(), payload["milp_accuracy"],
                                payload["greedy_accuracy"], payload["milp_exact_rate"],
                                len(payload["cases"]))
         snaps = repo.list_eval_snapshots()
+        _new_snap = True
     baseline = snaps[0]["milp_accuracy"] if snaps else payload["milp_accuracy"]
     latest = snaps[-1]["milp_accuracy"] if snaps else payload["milp_accuracy"]
     drift = round((latest - baseline) * 100, 2)
+    if _new_snap and drift <= -2.0:
+        # The drift alarm leaves the building: subscribed systems
+        # hear about a quality slip the day it is measured.
+        _fire_webhooks(repo, "evaluation.drift",
+                       {"baseline_accuracy": baseline, "latest_accuracy": latest,
+                        "drift_points": drift})
     return {"snapshots": snaps, "baseline_accuracy": baseline,
             "latest_accuracy": latest, "drift_points": drift,
             "drift_flag": drift <= -2.0,
@@ -1936,14 +1972,27 @@ def run_evidence(run_id: str, ctx=Depends(auth_context)):
     pack["manifest_covers"] = "every field above except generated_at"
     return pack
 
+_criteria_cache = {}
+
 @app.get("/api/v1/success-criteria")
 def success_criteria(ctx=Depends(auth_context)):
     """The contract dashboard: the criteria an enterprise buyer
     would hold this product to, computed from the workspace's own
     stored records - never from claims. Each row states its target,
-    the measured actual, and the basis it was measured on."""
+    the measured actual, and the basis it was measured on.
+    Cached per tenant behind a runs stamp (count + latest run):
+    the full computation scans every stored run and rebuilds
+    every posting document, which is the Health view's most
+    expensive read; decisions and reversals - the only post-run
+    mutations of match status - pop the cache explicitly."""
     need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
     runs = repo.list_runs(200)
+    stamp = (len(runs),
+             runs[0]["run_id"] if runs else "",
+             runs[0].get("status") if runs else "")
+    hit = _criteria_cache.get(ctx["tenant_id"])
+    if hit and hit[0] == stamp:
+        return hit[1]
     matches, exceptions = [], []
     for r in runs:
         matches.extend(repo.matches_for_run(r["run_id"]))
@@ -1995,16 +2044,20 @@ def success_criteria(ctx=Depends(auth_context)):
          "status": "pass" if exceptions and all(e.get("recommended_action") for e in exceptions) else "watch",
          "basis": "No exception is a dead end; each names the next human action"},
     ]
-    return {"criteria": rows, "runs_counted": len(runs),
+    payload = {"criteria": rows, "runs_counted": len(runs),
             "note": "Measured over every run stored in this workspace, "
                     "including the seeded demo case, which is deliberately "
                     "adversarial (duplicates, short-pays, a refusal) - it "
                     "exercises the exception paths rather than maximising "
                     "the touchless rate."}
+    _criteria_cache[ctx["tenant_id"]] = (stamp, payload)
+    if len(_criteria_cache) > 64:
+        _criteria_cache.clear()
+    return payload
 
 # ---- Integrations: SAP write-back, webhooks, feeds ----
 
-_WEBHOOK_EVENTS = {"run.completed", "approval.decided",
+_WEBHOOK_EVENTS = {"run.completed", "approval.decided", "evaluation.drift",
                    "dispute.transitioned", "match.reversed"}
 
 def _guard_public_url(url):
@@ -2050,7 +2103,8 @@ def _fire_webhooks(repo, event, data):
 def _integration_settings(repo):
     s = repo.get_setting("integrations", {}) or {}
     return {"sap_mode": s.get("sap_mode", "simulated"),
-            "sap_endpoint": s.get("sap_endpoint", "")}
+            "sap_endpoint": s.get("sap_endpoint", ""),
+            "erp_target": s.get("erp_target", "sap")}
 
 @app.get("/api/v1/integrations/settings")
 def get_integration_settings(ctx=Depends(auth_context)):
@@ -2060,18 +2114,49 @@ def get_integration_settings(ctx=Depends(auth_context)):
 class IntegrationSettingsIn(BaseModel):
     sap_mode: str = "simulated"
     sap_endpoint: str = ""
+    erp_target: str = "sap"
 
 @app.put("/api/v1/integrations/settings")
 def put_integration_settings(body: IntegrationSettingsIn, ctx=Depends(auth_context)):
     need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
     if body.sap_mode not in ("simulated", "http"):
         raise HTTPException(422, "sap_mode must be 'simulated' or 'http'")
+    if body.erp_target not in ("sap", "oracle", "netsuite"):
+        raise HTTPException(422, "erp_target must be 'sap', 'oracle' or 'netsuite'")
     if body.sap_mode == "http":
         if not body.sap_endpoint.startswith(("http://", "https://")):
             raise HTTPException(422, "http mode needs an http(s) endpoint URL")
     repo.set_setting("integrations", {"sap_mode": body.sap_mode,
-                                      "sap_endpoint": body.sap_endpoint})
+                                      "sap_endpoint": body.sap_endpoint,
+                                      "erp_target": body.erp_target})
     return _integration_settings(repo)
+
+def _erp_simulator(payload, target):
+    """Per-target connection-point validation, honestly labelled
+    like the SAP one: each target's envelope is checked the way
+    that system would check it (balanced lines above all) and a
+    target-prefixed simulated document number comes back."""
+    import hashlib as _hl
+    digest = _hl.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    if target == "oracle":
+        lines = payload.get("lines") or []
+        if not lines:
+            return None, "oracle payload rejected: no journal lines"
+        dr = round(sum(l.get("debit") or 0 for l in lines), 2)
+        cr = round(sum(l.get("credit") or 0 for l in lines), 2)
+        if dr != cr:
+            return None, f"oracle payload rejected: debits {dr} != credits {cr}"
+        return "ORASIM-" + digest[:8].upper(), "payload valid; simulated Oracle posting accepted"
+    if target == "netsuite":
+        lines = payload.get("lineList") or []
+        if not lines:
+            return None, "netsuite payload rejected: no journal lines"
+        dr = round(sum(l.get("debit") or 0 for l in lines), 2)
+        cr = round(sum(l.get("credit") or 0 for l in lines), 2)
+        if dr != cr:
+            return None, f"netsuite payload rejected: debits {dr} != credits {cr}"
+        return "NSSIM-" + digest[:8].upper(), "payload valid; simulated NetSuite posting accepted"
+    return _sap_simulator(payload)
 
 def _sap_simulator(payload):
     """The connection point, honestly labelled: validates the BAPI
@@ -2112,8 +2197,14 @@ def erp_transmit(body: TransmitIn, ctx=Depends(auth_context)):
     customers = {i.invoice_id: i.customer for i in repo.all_invoices()}
     doc = document_for_match(res, res.get("payment") or {"payment_id": body.payment_id},
                              document_number=doc_id, customers=customers)
-    payload = doc.get("bapi_payload") or {}
     settings = _integration_settings(repo)
+    target = settings.get("erp_target", "sap")
+    if target == "oracle":
+        payload = build_oracle_payload(doc)
+    elif target == "netsuite":
+        payload = build_netsuite_payload(doc)
+    else:
+        payload = doc.get("bapi_payload") or {}
     mode = settings["sap_mode"]
     if mode == "http":
         import httpx
@@ -2128,16 +2219,17 @@ def erp_transmit(body: TransmitIn, ctx=Depends(auth_context)):
         except Exception as e:
             status, sap_no, detail = "FAILED", None, f"endpoint unreachable: {str(e)[:160]}"
     else:
-        sap_no, detail = _sap_simulator(payload)
+        sap_no, detail = _erp_simulator(payload, target)
         status = "SIMULATED_POSTED" if sap_no else "FAILED"
     tid = "TRX-" + uuid.uuid4().hex[:10].upper()
     repo.add_transmission(tid, body.payment_id, doc_id, mode, status,
-                          sap_no, detail, _now_iso())
+                          sap_no, f"[{target}] {detail}", _now_iso())
     repo.audit(f"api:{ctx['role']}", "sap_transmitted", "payment", body.payment_id,
                {"document_number": doc_id, "mode": mode, "status": status,
-                "sap_document_number": sap_no}, _now_iso())
+                "target": target, "sap_document_number": sap_no}, _now_iso())
     return {"transmission_id": tid, "payment_id": body.payment_id,
             "document_number": doc_id, "mode": mode, "status": status,
+            "target": target,
             "sap_document_number": sap_no, "detail": detail}
 
 @app.get("/api/v1/erp/transmissions")
@@ -2401,6 +2493,422 @@ def portal_page(token: str):
         raise HTTPException(404, "portal page not installed")
     return _FileResponse(os.path.abspath(path), media_type="text/html")
 
+# ---- Moat completion: fusion, credit, treasury, escalation ----
+
+class FuseIn(BaseModel):
+    sources: list
+    stage: bool = False
+
+@app.post("/api/v1/evidence/fuse")
+def evidence_fuse(body: FuseIn, ctx=Depends(auth_context)):
+    """Fuse one payment's scattered evidence (bank line, email,
+    PDF text) into a single bundle: per-field provenance and the
+    conflicts, each settled by the stated rule (bank > pdf >
+    email for amount and payer). Optionally stage the fused
+    payment into the workspace."""
+    need(ctx, "parse"); repo = repo_for(ctx["tenant_id"])
+    from evidence import fuse_sources
+    try:
+        bundle = fuse_sources(body.sources)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    out = {"bundle": bundle}
+    if body.stage:
+        f = bundle["fields"]
+        if int(f.get("amount_cents") or 0) <= 0:
+            raise HTTPException(422, "the fused bundle has no amount to stage")
+        from domain import Payment as _Payment
+        pid = "FUSE-" + uuid.uuid4().hex[:8].upper()
+        repo.add_payment(_Payment(
+            payment_id=pid, payer_raw=f.get("payer") or "Unknown payer",
+            amount_cents=int(f["amount_cents"]), currency="USD",
+            claimed_deduction_cents=int(f.get("deduction_cents") or 0),
+            deduction_reason_raw=f.get("deduction_reason") or "",
+            references=list(f.get("references") or []),
+            remittance_text="Fused evidence: " + ", ".join(bundle["sources_seen"])))
+        repo.add_feed_event("evidence_fused",
+                            f"staged {pid} ${f['amount_cents'] / 100:,.2f} from "
+                            f"{len(bundle['sources_seen'])} sources, "
+                            f"{len(bundle['conflicts'])} conflict(s) resolved by rule",
+                            _now_iso())
+        out["staged_payment_id"] = pid
+    return out
+
+@app.get("/api/v1/credit-signals")
+def credit_signals(ctx=Depends(auth_context)):
+    """A live credit read per customer, computed from the
+    workspace's own records: judged payment behaviour, open
+    exposure, broken promises and dispute outcomes. Rules are
+    deterministic and every signal carries its reasons - a
+    heuristic read for a credit conversation, not a bureau score."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    from behaviour import build_profiles
+    profiles = {(" ".join((p["payer"] or "").lower().split())): p
+                for p in build_profiles(repo)}
+    open_by_cust, delay_by_cust = {}, {}
+    for inv in repo.open_invoices():
+        k = " ".join((inv.customer or "").lower().split())
+        open_by_cust[k] = open_by_cust.get(k, 0) + inv.gross_cents
+        delay_by_cust.setdefault(k, []).append(inv.predicted_delay_days or 0)
+    broken = {}
+    settled_ids = repo.settled_invoice_ids()
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    open_ids = {i.invoice_id for i in repo.open_invoices()}
+    for pr in repo.list_promises():
+        if pr["invoice_id"] in settled_ids:
+            continue
+        if pr["promised_date"] < today and pr["invoice_id"] in open_ids:
+            k = " ".join((pr["customer"] or "").lower().split())
+            broken[k] = broken.get(k, 0) + 1
+    rows = []
+    for k in sorted(set(profiles) | set(open_by_cust)):
+        p = profiles.get(k) or {}
+        delays = delay_by_cust.get(k) or [0]
+        avg_delay = round(sum(delays) / len(delays), 1)
+        reasons = []
+        signal = "STEADY"
+        if broken.get(k):
+            signal = "DETERIORATING"
+            reasons.append(f"{broken[k]} promise(s) to pay broken and still open")
+        if (p.get("deduction_share") or 0) >= 0.5:
+            signal = "DETERIORATING"
+            reasons.append(f"deductions claimed on {round(p['deduction_share'] * 100)}% of payments")
+        if (p.get("partial_share") or 0) >= 0.5:
+            signal = "DETERIORATING"
+            reasons.append(f"short-pays on {round(p['partial_share'] * 100)}% of posted payments")
+        if signal != "DETERIORATING":
+            if (p.get("deduction_share") or 0) >= 0.25:
+                signal = "WATCH"; reasons.append("deductions on a quarter or more of payments")
+            if (p.get("partial_share") or 0) >= 0.25:
+                signal = "WATCH"; reasons.append("frequent short-pays")
+            if avg_delay >= 10:
+                signal = "WATCH"; reasons.append(f"open invoices predicted to land {avg_delay} days late on average")
+            if p.get("duplicates"):
+                signal = "WATCH"; reasons.append(f"{p['duplicates']} duplicate wire(s) sent")
+        if signal == "STEADY":
+            if (p.get("posted") or 0) >= 3 and not (p.get("deduction_share") or 0) \
+               and not (p.get("partial_share") or 0) and not p.get("duplicates"):
+                signal = "STRONG"
+                reasons.append("consistent full, clean payments across the judged history")
+            else:
+                reasons.append("nothing in the judged history or the open book raises a flag")
+        action = {"STRONG": "Candidate for better terms at the next review.",
+                  "STEADY": "Keep current terms; review on the normal cycle.",
+                  "WATCH": "Tighten monitoring; confirm the next payment before shipping more.",
+                  "DETERIORATING": "Cut the limit or move to proforma until the pattern repairs."}[signal]
+        rows.append({"customer": (p.get("payer") or k), "signal": signal,
+                     "reasons": reasons, "suggested_action": action,
+                     "open_exposure_cents": open_by_cust.get(k, 0),
+                     "payments_judged": p.get("payments", 0),
+                     "avg_predicted_delay_days": avg_delay,
+                     "broken_promises": broken.get(k, 0)})
+    rows.sort(key=lambda r: {"DETERIORATING": 0, "WATCH": 1, "STEADY": 2, "STRONG": 3}[r["signal"]])
+    return {"signals": rows,
+            "basis": "this workspace's stored match, promise, dispute and ledger records only; "
+                     "deterministic rules, stated per row"}
+
+@app.get("/api/v1/treasury")
+def treasury(ctx=Depends(auth_context)):
+    """The cash view: what the forecast expects, week by week,
+    against what runs actually posted in those weeks - forecast
+    vs actual from the same stored records, plus the position
+    totals a CFO asks for first."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    state = _workspace_state(repo)
+    if state.get("run_status") != "executed":
+        return {"state": state.get("run_status", "empty"), "weeks": [],
+                "note": "The treasury view reads the post-reconciliation ledger; run a batch first."}
+    residual = _residual_invoices(repo)
+    fc = forecast_cash_in(residual, models()["delay_model"],
+                          current_month=_current_month()) if residual else {"weeks": []}
+    weeks = fc.get("weeks") or []
+    from datetime import datetime as _dt, timezone as _tz
+    actual_by_week = {}
+    for r in repo.list_runs(200):
+        try:
+            created = _dt.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        iso = created.isocalendar()
+        key = f"{iso[0]}-W{iso[1]:02d}"
+        total = 0
+        for m in repo.matches_for_run(r["run_id"]):
+            if m["status"] in ("AUTO_POSTED", "APPROVED_POSTED"):
+                res = m["result"] or {}
+                total += sum((l.get("net_cents") or l.get("gross_cents") or 0)
+                             for l in res.get("lines") or [])
+        actual_by_week[key] = actual_by_week.get(key, 0) + total
+    now_iso = _dt.now(_tz.utc).isocalendar()
+    this_week = f"{now_iso[0]}-W{now_iso[1]:02d}"
+    out_weeks = []
+    for i, w in enumerate(weeks):
+        key = this_week if i == 0 else None
+        actual = actual_by_week.get(key, 0) if key else 0
+        out_weeks.append({"week": w.get("week"),
+                          "expected_p50_cents": w.get("p50_cents"),
+                          "expected_p10_cents": w.get("p10_cents"),
+                          "expected_p90_cents": w.get("p90_cents"),
+                          "actual_cents": actual if i == 0 else None,
+                          "variance_cents": (actual - (w.get("p50_cents") or 0)) if i == 0 else None})
+    posted_total = sum(actual_by_week.values())
+    return {"state": "ready", "weeks": out_weeks,
+            "open_ar_cents": sum(i.gross_cents for i in repo.open_invoices()),
+            "posted_total_cents": posted_total,
+            "suspense_cents": state.get("suspense_cents", 0),
+            "basis": "expected from the forecast on the residual ledger; actual = posted "
+                     "match lines grouped by the week their run completed (current week shown)"}
+
+@app.post("/api/v1/collections/escalate")
+def collections_escalate(ctx=Depends(auth_context)):
+    """The collections agent's escalation pass, by policy: a
+    broken promise earns a final-notice draft; an invoice overdue
+    beyond the policy's escalation window with no promise earns
+    an escalated reminder draft. Drafts land in the Outbox (they
+    send when mail transport is configured), the pass is audited,
+    and an invoice is never escalated twice in one day."""
+    need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
+    policy = _policy_for(repo, ctx["tenant_id"], None)
+    window = int(getattr(policy, "collections_escalation_days", 14))
+    settled_ids = repo.settled_invoice_ids()
+    open_invs = {i.invoice_id: i for i in repo.open_invoices()}
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    promised = {p["invoice_id"]: p for p in repo.list_promises()}
+    already = {row["ref_id"] for row in repo.list_outbox(300)
+               if row.get("kind") == "collection_escalation"
+               and (row.get("created_at") or "").startswith(today)}
+    escalated = []
+    for iid, inv in open_invs.items():
+        if iid in already or inv.due_in_days >= 0:
+            continue
+        pr = promised.get(iid)
+        kind = None
+        if pr and pr["promised_date"] < today:
+            kind = "broken_promise"
+        elif -inv.due_in_days >= window:
+            kind = "overdue_beyond_window"
+        if not kind:
+            continue
+        draft = reminder_draft(inv)
+        repo.add_outbox(inv.customer, draft["subject"],
+                        ("ESCALATION (" + kind.replace("_", " ") + "): " + draft["body"]),
+                        "collection_escalation", iid, "draft",
+                        "Escalation draft composed by the collections agent "
+                        "under the policy window; add the customer's email "
+                        "address in the Mail Hub to send.", _now_iso())
+        escalated.append({"invoice_id": iid, "customer": inv.customer,
+                          "amount_cents": inv.gross_cents, "kind": kind})
+    repo.audit(f"api:{ctx['role']}", "collections_escalated", "workspace", "",
+               {"escalated": len(escalated), "window_days": window}, _now_iso())
+    return {"escalated": escalated, "window_days": window,
+            "note": "Drafts are in the Outbox; they send when mail transport is configured."}
+
+# ---- Integrations completion: chat approvals, virtual accounts, bank pull ----
+
+def _chat_settings(repo):
+    s = repo.get_setting("chat", {}) or {}
+    return {"slack_url": s.get("slack_url", ""), "teams_url": s.get("teams_url", "")}
+
+def _fire_chat(repo, text):
+    """Post an approval summary to the configured chat targets.
+    Slack and Teams incoming webhooks are the connection point:
+    the message carries the held items and a pointer back to the
+    console, where the decision itself happens (interactive chat
+    buttons need a vendor app registration - out of scope and
+    never implied). Deliveries are logged like webhooks."""
+    import threading as _th
+    cfg = _chat_settings(repo)
+    def _post(kind, url):
+        try:
+            import httpx
+            if kind == "slack":
+                payload = {"text": text}
+            else:
+                payload = {"@type": "MessageCard", "@context": "https://schema.org/extensions",
+                           "summary": "SlateMatch approvals waiting", "text": text}
+            r = httpx.post(url, json=payload, timeout=5.0)
+            repo.add_delivery("CHAT-" + kind.upper(), "chat.approvals",
+                              r.status_code, 200 <= r.status_code < 300, "", _now_iso())
+        except Exception as e:
+            repo.add_delivery("CHAT-" + kind.upper(), "chat.approvals",
+                              None, False, str(e)[:200], _now_iso())
+    for kind in ("slack", "teams"):
+        url = cfg.get(kind + "_url")
+        if url:
+            _th.Thread(target=_post, args=(kind, url), daemon=True).start()
+
+class ChatIn(BaseModel):
+    slack_url: str = ""
+    teams_url: str = ""
+
+@app.get("/api/v1/integrations/chat")
+def get_chat(ctx=Depends(auth_context)):
+    need(ctx, "read")
+    return _chat_settings(repo_for(ctx["tenant_id"]))
+
+@app.put("/api/v1/integrations/chat")
+def put_chat(body: ChatIn, ctx=Depends(auth_context)):
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    for url in (body.slack_url, body.teams_url):
+        if url:
+            _guard_public_url(url)
+    repo.set_setting("chat", {"slack_url": body.slack_url, "teams_url": body.teams_url})
+    return _chat_settings(repo)
+
+@app.post("/api/v1/integrations/chat/test")
+def chat_test(ctx=Depends(auth_context)):
+    need(ctx, "approve"); repo = repo_for(ctx["tenant_id"])
+    cfg = _chat_settings(repo)
+    if not cfg["slack_url"] and not cfg["teams_url"]:
+        raise HTTPException(422, "no chat target configured")
+    _fire_chat(repo, "SlateMatch test message: chat approvals are connected. "
+                     "Held payments will be summarised here with a pointer to the console.")
+    return {"sent_to": [k for k in ("slack", "teams") if cfg[k + "_url"]]}
+
+@app.get("/api/v1/virtual-accounts")
+def virtual_accounts(ctx=Depends(auth_context)):
+    """One virtual account number per customer, derived
+    deterministically from the customer name: put it on the
+    invoice and the payer is identified the second money lands.
+    The registry is the connection point - a bank issues the
+    underlying accounts; the numbers here are stable, unique per
+    customer, and safe to print on instruction sheets today."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    import hashlib as _hl
+    customers = sorted({i.customer for i in repo.all_invoices()} |
+                       {p.payer_raw for p in repo.all_payments() if p.payer_raw})
+    out = []
+    for c in customers:
+        n = int(_hl.sha256(("va:" + c.lower()).encode()).hexdigest()[:12], 16) % 10**10
+        out.append({"customer": c, "virtual_account": f"{n:010d}",
+                    "instruction": f"Quote VA {n:010d} on the wire or the invoice remittance line."})
+    return {"accounts": out,
+            "basis": "derived per customer (SHA-256 of the name), stable across calls"}
+
+class BankPullIn(BaseModel):
+    url: str
+
+@app.post("/api/v1/feeds/bank/pull")
+def bank_pull(body: BankPullIn, ctx=Depends(auth_context)):
+    """The scheduled-feed connection point: fetch a bank file
+    (BAI2, MT940 or camt.054) from a configured URL and run it
+    through the same lockbox import the Upload Center uses. A
+    scheduler calls this on a cadence; the button calls it now.
+    Private and loopback URLs are refused, like webhooks."""
+    need(ctx, "run"); repo = repo_for(ctx["tenant_id"])
+    _guard_public_url(body.url)
+    import httpx
+    try:
+        r = httpx.get(body.url, timeout=8.0)
+        if r.status_code != 200:
+            raise HTTPException(502, f"bank feed answered HTTP {r.status_code}")
+        text = r.text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"bank feed unreachable: {str(e)[:160]}")
+    from lockbox import sniff_lockbox_format as _sniff, PARSERS as _PARSERS
+    fmt = _sniff(text, body.url)
+    if not fmt:
+        raise HTTPException(422, "the fetched file is not a BAI2, MT940 or camt.054 bank file")
+    pays = _PARSERS[fmt](text)
+    if not pays:
+        raise HTTPException(422, "bank file parsed but held no credit payments")
+    for p in pays:
+        repo.add_payment(p, payment_fingerprint(p))
+    if not repo.get_meta("active_case"):
+        repo.set_meta("active_case", {"id": "upload", "name": "Uploaded files", "source": "upload",
+                                      "loaded_at": _now_iso(), "expect": {}, "expect_exceptions": {},
+                                      "story": _uploaded_story(repo, "A bank feed file was pulled into an empty workspace")})
+    pol = _policy_for(repo, ctx["tenant_id"], None)
+    run = run_batch(repo, repo.all_payments(), pol,
+                    "bankpull-" + uuid.uuid4().hex[:10], actor=f"api:{ctx['role']}")
+    _finish_run_outputs(repo, run)
+    repo.add_feed_event("bank_feed_pull",
+                        f"pulled {fmt} file: {len(pays)} payment(s) staged and run",
+                        _now_iso())
+    return {"format": fmt, "imported": len(pays), "run": run}
+
+@app.get("/api/v1/evidence/period")
+def evidence_period(days: int = 30, ctx=Depends(auth_context)):
+    """One auditor pack for a period: every run inside the
+    window, each with its own evidence pack and manifest, closed
+    with a combined manifest over all of them."""
+    need(ctx, "read"); repo = repo_for(ctx["tenant_id"])
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    cutoff = _dt.now(_tz.utc) - _td(days=max(1, days))
+    packs = []
+    for r in repo.list_runs(200):
+        try:
+            created = _dt.fromisoformat(r["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if created >= cutoff:
+            packs.append(run_evidence(r["run_id"], ctx))
+    import hashlib as _hl
+    canonical = json.dumps([{k: v for k, v in p.items() if k != "generated_at"}
+                            for p in packs], sort_keys=True)
+    return {"period_days": days, "runs": [p["run"]["run_id"] for p in packs],
+            "packs": packs, "generated_at": _now_iso(),
+            "manifest_sha256": _hl.sha256(canonical.encode()).hexdigest(),
+            "manifest_covers": "every run pack in the period except generated_at fields"}
+
+class PublicReplayIn(BaseModel):
+    invoices_csv: str
+    payments_csv: str
+
+@app.post("/api/v1/replay/public")
+def public_replay(body: PublicReplayIn):
+    """Self-serve replay for a prospect: paste up to 90 days of
+    invoices and payments, get the reconciliation report back -
+    no account, no stored workspace (an ephemeral tenant runs
+    the real engine and is reaped like any session tenant)."""
+    if len(body.invoices_csv) > 400_000 or len(body.payments_csv) > 400_000:
+        raise HTTPException(422, "paste is too large; trim it to a 90-day window")
+    tenant = "public--" + uuid.uuid4().hex
+    repo = repo_for(tenant)
+    from ingestion import parse_invoices_csv, parse_payments_csv
+    try:
+        invs = parse_invoices_csv(body.invoices_csv)["invoices"]
+        pays = parse_payments_csv(body.payments_csv)["payments"]
+    except Exception as e:
+        raise HTTPException(422, f"could not parse the CSVs: {str(e)[:200]}")
+    if not invs or not pays:
+        raise HTTPException(422, "both an invoice list and a payment list are needed")
+    repo.clear_workspace()
+    _criteria_cache.pop(tenant, None)
+    for inv in invs:
+        repo.add_invoice(inv)
+    for p in pays:
+        repo.add_payment(p)
+    policy = _policy_for(repo, tenant, None)
+    run = run_batch(repo, pays, policy, idempotency_key="public-replay-" + uuid.uuid4().hex[:8],
+                    actor="public-replay")
+    matches = repo.matches_for_run(run["run_id"])
+    outcomes = []
+    for m in matches:
+        res = m["result"] or {}
+        outcomes.append({"payment_id": m["payment_id"], "status": m["status"],
+                         "residual_cents": m["residual_cents"],
+                         "reason": res.get("decision_reason") or ""})
+    auto = sum(1 for m in matches if m["status"] == "AUTO_POSTED")
+    held = sum(1 for m in matches if m["status"] == "PROPOSED")
+    return {"payments": len(pays), "invoices": len(invs),
+            "auto_posted": auto, "held_for_review": held,
+            "exceptions": len(repo.exceptions_for_run(run["run_id"])),
+            "touchless_rate": round(auto / len(matches), 3) if matches else 0,
+            "outcomes": outcomes,
+            "note": "Run by the same engine as the product, on an ephemeral workspace. "
+                    "Nothing here is kept as a customer workspace."}
+
+@app.get("/replay")
+def replay_page():
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "replay.html")
+    if not os.path.isfile(path):
+        raise HTTPException(404, "replay page not installed")
+    return _FileResponse(os.path.abspath(path), media_type="text/html")
+
 # ---- Mail: send the product's drafts, with an honest outbox ----
 class MailSendIn(BaseModel):
     to: str; subject: str; body: str; kind: str = "other"; ref_id: str = ""
@@ -2556,9 +3064,13 @@ def evaluations():
 # ---- Session save & retrieve -------------------------------------------
 # A workspace session can be snapshotted under a short session ID and
 # restored later, byte for byte, by entering that ID. Snapshots are
-# SQLite VACUUM INTO copies of the session's database file, kept in
+# SQLite copies of the session's database, kept in
 # <data_dir>/saved_sessions/ for the life of the deployment (the data
-# dir is ephemeral by design, and the UI says so).
+# dir is ephemeral by design, and the UI says so). On SQLite they are
+# VACUUM INTO copies of the tenant file; on Postgres the same
+# portable SQLite file is built by copying every tenant table
+# through the storage seam (and a restore loads it back the same
+# way), so a snapshot means the same thing in both storage modes.
 import sqlite3 as _sqlite3, shutil as _shutil, secrets as _secrets
 
 _SAVE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -2673,6 +3185,73 @@ def _db_counts(path):
         con.close()
     return out
 
+def _snapshot_table_names():
+    import repository as _repmod
+    return _re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)",
+                       _repmod.SCHEMA)
+
+def _dump_repo_to_sqlite(repo, dest):
+    """Postgres mode: build the snapshot file by copying every
+    tenant table through the seam, so the snapshot is the same
+    portable SQLite file VACUUM INTO produces on SQLite."""
+    import repository as _repmod
+    if os.path.exists(dest):
+        os.remove(dest)
+    out = _sqlite3.connect(dest)
+    try:
+        out.executescript(_repmod.SCHEMA)
+        for alter in (
+                "ALTER TABLE payments ADD COLUMN references_json TEXT DEFAULT '[]'",
+                "ALTER TABLE audit_log ADD COLUMN fingerprint TEXT"):
+            try:
+                out.execute(alter)
+            except Exception:
+                pass
+        for t in _snapshot_table_names():
+            cur = repo.conn.execute(f"SELECT * FROM {t}")
+            if cur.description is None:
+                continue
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+            if not rows:
+                continue
+            out.executemany(
+                f"INSERT INTO {t} ({', '.join(cols)}) "
+                f"VALUES ({', '.join('?' for _ in cols)})", rows)
+        out.commit()
+    finally:
+        out.close()
+
+def _load_sqlite_into_repo(repo, src):
+    """Postgres mode restore: replace the tenant schema's
+    contents with the snapshot file's rows, then advance the
+    serial sequences past the restored ids."""
+    from db import SERIAL_TABLES as _serial_tables
+    con = _sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    try:
+        have = {r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+        with repo.transaction():
+            for t in _snapshot_table_names():
+                if t not in have:
+                    continue
+                cur = con.execute(f"SELECT * FROM {t}")
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+                repo.conn.execute(f"DELETE FROM {t}")
+                for row in rows:
+                    repo.conn.execute(
+                        f"INSERT INTO {t} ({', '.join(cols)}) "
+                        f"VALUES ({', '.join('?' for _ in cols)})",
+                        tuple(row))
+                if t in _serial_tables:
+                    repo.conn.execute(
+                        f"SELECT setval(pg_get_serial_sequence("
+                        f"'{t}', 'id'), (SELECT COALESCE(MAX(id), 1) "
+                        f"FROM {t}))")
+    finally:
+        con.close()
+
 @app.post("/api/v1/session/save")
 def session_save(body: dict = None, ctx=Depends(auth_context)):
     need(ctx, "run")
@@ -2684,11 +3263,15 @@ def session_save(body: dict = None, ctx=Depends(auth_context)):
         if not os.path.exists(dest): break
     repo.audit(f"api:{ctx['role']}", "session_saved", "session", save_id,
                {"tenant": ctx["base_tenant"]}, _now_iso())
-    con = _sqlite3.connect(repo.path)
-    try:
-        con.execute("VACUUM INTO ?", (dest,))
-    finally:
-        con.close()
+    from db import pg_enabled as _pg_enabled
+    if _pg_enabled():
+        _dump_repo_to_sqlite(repo, dest)
+    else:
+        con = _sqlite3.connect(repo.path)
+        try:
+            con.execute("VACUUM INTO ?", (dest,))
+        finally:
+            con.close()
     meta = {"save_id": save_id, "saved_at": _now_iso(), "tenant": ctx["base_tenant"],
             "label": ((body or {}).get("label") or "").strip()[:80],
             "counts": _db_counts(dest)}
@@ -2712,6 +3295,20 @@ def session_restore(body: dict, ctx=Depends(auth_context)):
     if len(key) != 10 or not os.path.exists(src):
         raise HTTPException(404, "No saved session with that ID. Check the ID and try again - IDs look like SM-7K2QX-9M4TD.")
     repo = repo_for(ctx["tenant_id"])
+    from db import pg_enabled as _pg_enabled
+    if _pg_enabled():
+        # Postgres mode: there is no tenant file to swap; the
+        # snapshot's rows replace the schema's contents instead.
+        with _repos_lock:
+            _repos.pop(ctx["tenant_id"], None)
+        fresh = repo_for(ctx["tenant_id"])
+        _load_sqlite_into_repo(fresh, src)
+        _criteria_cache.pop(ctx["tenant_id"], None)
+        meta = _manifest().get(key, {})
+        fresh.audit(f"api:{ctx['role']}", "session_restored", "session", meta.get("save_id", key),
+                    {"saved_at": meta.get("saved_at")}, _now_iso())
+        return {"restored": True, "save_id": meta.get("save_id", key),
+                "saved_at": meta.get("saved_at"), "counts": _db_counts(src)}
     target = repo.path
     if os.path.abspath(src) == os.path.abspath(target):
         raise HTTPException(409, "That snapshot is this workspace's own file; nothing to restore.")
@@ -2723,6 +3320,7 @@ def session_restore(body: dict, ctx=Depends(auth_context)):
         try: os.remove(target + suffix)
         except OSError: pass
     os.replace(tmp, target)
+    _criteria_cache.pop(ctx["tenant_id"], None)
     meta = _manifest().get(key, {})
     fresh = repo_for(ctx["tenant_id"])
     fresh.audit(f"api:{ctx['role']}", "session_restored", "session", meta.get("save_id", key),
@@ -2809,7 +3407,7 @@ def policy_preview(body: PolicyIn, ctx=Depends(auth_context)):
     import tempfile, shutil as _sh
     tmpdir = tempfile.mkdtemp(prefix="slatematch-preview-")
     try:
-        trepo = Repository(os.path.join(tmpdir, "preview.db"))
+        trepo = Repository(os.path.join(tmpdir, "preview.db"), force_sqlite=True)
         for inv in repo.all_invoices():
             trepo.add_invoice(inv)
         for pay in repo.all_payments():

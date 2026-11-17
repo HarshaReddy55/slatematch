@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { api, authHeaders, type MatchRecord } from "./api";
+import type { CaseExpect } from "./insight";
 import type { WorkspaceOperate } from "./operate";
 
 /* Stage 4 (Chrome) shared logic, ported from the vanilla state.js /
@@ -23,6 +24,12 @@ export interface CaseInfo {
   source?: string;
   loaded_at?: string;
   story?: string;
+  /* The case's grading expectations ride on the same object
+     (insight.ts CaseMeta declares them for the operate types);
+     Run and Eval read them from the shared workspace payload. */
+  expect?: Record<string, CaseExpect>;
+  expect_exceptions?: Record<string, string>;
+  policy_note?: string;
 }
 
 export interface WorkspaceFull extends WorkspaceOperate {
@@ -47,6 +54,7 @@ export function fmtLoadedAt(iso?: string): string {
     restore, reseed): listeners must not apply stale-read guards
     to the replacement snapshot. */
 export function requestShellRefresh(force = false) {
+  invalidateWorkspaceCache();
   try {
     window.dispatchEvent(
       new CustomEvent("slate:ws-refresh", { detail: { force } })
@@ -54,6 +62,56 @@ export function requestShellRefresh(force = false) {
   } catch {
     /* never a blocker */
   }
+}
+
+/* ---------------- shared workspace read (F8) ----------------
+   One workspace truth, one fetch. Before this, fourteen call
+   sites fetched /api/v1/workspace independently, so a single
+   view transition fired three to six identical requests
+   (casebar, brief, the view itself, the copilot). The store
+   below dedupes concurrent reads into one in-flight request
+   and serves a two-second stale-while-revalidate window;
+   requestShellRefresh (every mutation path fires it) and a
+   session or tenant switch invalidate it immediately, so no
+   surface can sit on a replaced workspace. The key binds the
+   cache to the session, tenant and key identity - the same
+   identity the API itself scopes by. */
+
+let _wsCache: { key: string; data: WorkspaceFull; at: number } | null = null;
+let _wsInflight: Promise<WorkspaceFull> | null = null;
+
+function _wsKey(): string {
+  try {
+    return (
+      (sessionStorage.getItem("slatematch_session_id") || "") +
+      "|" +
+      (localStorage.getItem("slate-tenant") || "") +
+      "|" +
+      (localStorage.getItem("slate-key") || "").length
+    );
+  } catch {
+    return "";
+  }
+}
+
+export function invalidateWorkspaceCache() {
+  _wsCache = null;
+}
+
+export function fetchWorkspace<T = WorkspaceFull>(): Promise<T> {
+  const key = _wsKey();
+  if (_wsCache && _wsCache.key === key && Date.now() - _wsCache.at < 2000)
+    return Promise.resolve(_wsCache.data as unknown as T);
+  if (_wsInflight) return _wsInflight as Promise<unknown> as Promise<T>;
+  _wsInflight = api<WorkspaceFull>("/api/v1/workspace")
+    .then((d) => {
+      _wsCache = { key, data: d, at: Date.now() };
+      return d;
+    })
+    .finally(() => {
+      _wsInflight = null;
+    });
+  return _wsInflight as Promise<unknown> as Promise<T>;
 }
 
 /** Stage 6 (Item 1): the view-side half of the refresh contract.
@@ -146,7 +204,7 @@ export interface CopilotReply {
 export async function copilotSuggestions(): Promise<string[]> {
   const qs: string[] = [];
   try {
-    const ws = await api<WorkspaceFull>("/api/v1/workspace");
+    const ws = await fetchWorkspace();
     const runs = await api<{ run_id: string }[]>("/api/v1/runs");
     if (runs.length) {
       const rid = runs[0].run_id;

@@ -277,3 +277,43 @@ def dispute_accrual_journal(deduction):
                  "understated by a deduction whose validity is still being "
                  "contested. It resolves when the dispute closes."),
     }
+
+
+def build_oracle_payload(document):
+    """The same balanced journal in Oracle ERP's journal-import
+    shape: a header (source, category, accounting date, currency)
+    and lines carrying account, debit and credit in major units.
+    The journal is unchanged - only the envelope is Oracle's."""
+    from datetime import datetime, timezone
+    journal = document.get("journal") or []
+    lines = [{"account": l["gl_account"],
+              "account_name": l.get("account_name", ""),
+              "debit": (l.get("debit_cents") or 0) / 100.0,
+              "credit": (l.get("credit_cents") or 0) / 100.0,
+              "description": l.get("text", "")}
+             for l in journal]
+    return {"source": "SlateMatch", "category": "Cash Receipts",
+            "accounting_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "currency": document.get("currency", "USD"),
+            "reference": document.get("document_number"),
+            "description": document.get("note", ""),
+            "lines": lines}
+
+
+def build_netsuite_payload(document):
+    """The same balanced journal in NetSuite's journal-entry
+    record shape (REST record API): tranDate, currency, and a
+    line list with account, debit and credit in major units."""
+    from datetime import datetime, timezone
+    journal = document.get("journal") or []
+    lines = [{"account": l["gl_account"],
+              "debit": (l.get("debit_cents") or 0) / 100.0,
+              "credit": (l.get("credit_cents") or 0) / 100.0,
+              "memo": l.get("text", "")}
+             for l in journal]
+    return {"recordType": "journalentry",
+            "tranDate": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "currency": document.get("currency", "USD"),
+            "externalId": document.get("document_number"),
+            "memo": document.get("note", ""),
+            "lineList": lines}

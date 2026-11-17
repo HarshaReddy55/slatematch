@@ -12,6 +12,7 @@ import {
   fmtLoadedAt,
   requestShellRefresh,
   type WorkspaceFull,
+  fetchWorkspace,
 } from "../lib/chrome";
 import { invalidateBrief } from "../lib/brief";
 import { goView, setIntent, toggleRunDiffPanel } from "../lib/operate";
@@ -111,7 +112,7 @@ export default function Casebar({
 
   const load = useCallback(async () => {
     try {
-      const d = await api<WorkspaceFull>("/api/v1/workspace");
+      const d = await fetchWorkspace();
       // Vanilla's stale-read guard: a snapshot that predates the
       // latest known run must not regress the strip.
       if (

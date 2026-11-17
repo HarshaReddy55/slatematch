@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replay your own ledger - SlateMatch</title>
+<style>
+  :root { --bg:#232323; --panel:#2a2a2a; --panel2:#1d1d1d; --line:#3d3d3d;
+          --ink:#f2f2f2; --mut:#a8a8a8; --blue:#3D75E8; --ok:#4caf7d; --warn:#e0a83c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family: Inter, system-ui, -apple-system, sans-serif; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 18px 60px; }
+  .brand { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .brand span { color: var(--blue); }
+  h1 { font-size: 22px; margin: 18px 0 6px; }
+  .sub { color: var(--mut); font-size: 14px; line-height: 1.6; margin: 0 0 14px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  label { font-size: 12.5px; color: var(--mut); display: block; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 190px; background: var(--panel2);
+    border: 1px solid var(--line); color: var(--ink); font-family: ui-monospace, monospace;
+    font-size: 12px; padding: 10px; resize: vertical; }
+  button { background: var(--blue); color: #fff; border: 0; padding: 10px 18px;
+           font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 14px; }
+  button:disabled { opacity: .55; cursor: default; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 16px 18px; margin-top: 18px; }
+  .stats { display: flex; gap: 26px; flex-wrap: wrap; }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { color: var(--mut); font-size: 12.5px; }
+  table { width:100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  th { text-align:left; color: var(--mut); font-size: 11.5px; text-transform: uppercase;
+       letter-spacing: .06em; padding: 6px 8px 6px 0; }
+  td { padding: 7px 8px 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .err { color: #e88; margin-top: 12px; font-size: 14px; }
+  footer { margin-top: 40px; color: var(--mut); font-size: 12.5px; line-height: 1.6;
+           border-top: 1px solid var(--line); padding-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">s<span>/</span>ate match</div>
+  <h1>Replay your own ledger</h1>
+  <p class="sub">Paste up to 90 days of open invoices and the payments that arrived against
+  them. The same engine that runs SlateMatch reconciles them on an ephemeral workspace and
+  reports what would have posted itself, what would wait for a person, and why. Nothing is
+  kept as a customer workspace.</p>
+  <div class="cols">
+    <div>
+      <label>Invoices CSV - columns: invoice_id, customer, amount (PO, discount and dates optional)</label>
+      <textarea id="invs" placeholder="invoice_id,customer,amount,po_number,discount_rate,age_days,due_in_days&#10;INV-1,Acme Widgets,12000.00,PO-1,0,20,10"></textarea>
+    </div>
+    <div>
+      <label>Payments CSV - columns: payment_id, payer, amount (name the invoices in the remittance text)</label>
+      <textarea id="pays" placeholder="payment_id,payer,amount,remittance_text&#10;W-1,Acme Widgets,12000.00,Wire for INV-1"></textarea>
+    </div>
+  </div>
+  <button id="go" onclick="run()">Run the replay</button>
+  <div class="err" id="err"></div>
+  <div id="out"></div>
+  <footer>Runs on an ephemeral workspace that is reaped like any demo session. Your paste is
+  processed by the reconciliation engine and not stored as an account.</footer>
+</div>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
+const money = c => "$" + (Math.abs(c || 0) / 100).toLocaleString("en-US", {minimumFractionDigits: 2});
+async function run() {
+  const btn = document.getElementById("go");
+  const err = document.getElementById("err");
+  const out = document.getElementById("out");
+  err.textContent = ""; out.innerHTML = "";
+  btn.disabled = true; btn.textContent = "Reconciling...";
+  try {
+    const r = await fetch("/api/v1/replay/public", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({invoices_csv: document.getElementById("invs").value,
+                            payments_csv: document.getElementById("pays").value})});
+    if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+    const d = await r.json();
+    let h = `<div class="card"><div class="stats">
+      <div class="stat"><b>${d.auto_posted}</b><span>posted themselves</span></div>
+      <div class="stat"><b>${d.held_for_review}</b><span>held for a person</span></div>
+      <div class="stat"><b>${d.exceptions}</b><span>exceptions</span></div>
+      <div class="stat"><b>${Math.round(d.touchless_rate * 100)}%</b><span>touchless rate</span></div>
+      </div><table><tr><th>Payment</th><th>Outcome</th><th>Why</th></tr>`;
+    for (const o of d.outcomes) {
+      const label = o.status === "AUTO_POSTED" ? "Posted" : o.status === "PROPOSED" ? "Held for review" : esc(o.status);
+      h += `<tr><td><b>${esc(o.payment_id)}</b></td><td>${label}</td><td>${esc(o.reason)}</td></tr>`;
+    }
+    h += `</table><p class="sub" style="margin-top:10px">${esc(d.note)}</p></div>`;
+    out.innerHTML = h;
+  } catch (e) {
+    err.textContent = "That did not run: " + e.message.replace(/^\{"detail":"?/, "").replace(/"\}$/, "");
+  } finally {
+    btn.disabled = false; btn.textContent = "Run the replay";
+  }
+}
+</script>
+</body>
+</html>

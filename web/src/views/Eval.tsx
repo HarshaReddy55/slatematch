@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, money, type MatchRecord, type RunSummary } from "../lib/api";
-import { useWsRefresh } from "../lib/chrome";
+import { useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import {
   gradeCase,
   normalisedStored,
@@ -61,7 +63,7 @@ export default function Eval() {
     setError("");
     setPacks(null);
     (async () => {
-      const ws = await api<WorkspaceFull>("/api/v1/workspace");
+      const ws = await fetchWorkspace();
       setWsFull(ws);
       if (ws.run_status === "staged") {
         setData({

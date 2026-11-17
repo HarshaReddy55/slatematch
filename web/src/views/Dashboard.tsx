@@ -19,7 +19,9 @@ import {
 } from "../lib/dashboard";
 import { useRollUp } from "../lib/useRollUp";
 import { goView, setIntent, type WorkspaceOperate } from "../lib/operate";
-import { requestShellRefresh, useWsRefresh } from "../lib/chrome";
+import { requestShellRefresh, useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import { StagedGate } from "../ui/Stage3";
 import Panel from "../ui/Panel";
 import Pill from "../ui/Pill";
@@ -86,7 +88,7 @@ interface DashData {
 
 async function loadDashboard(): Promise<DashData> {
   const [ws, health, runsRaw] = await Promise.all([
-    api<WorkspaceState>("/api/v1/workspace"),
+    fetchWorkspace<WorkspaceState>(),
     api<Health>("/health"),
     api<RunSummary[]>("/api/v1/runs"),
   ]);

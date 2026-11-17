@@ -25,7 +25,7 @@ def test_payments_csv_import_runs_batch():
 
 def test_scenarios_all_pass():
     lst = c.get("/api/v1/scenarios").json()
-    assert len(lst) == 10
+    assert len(lst) == 11  # + the CPG vertical pack scenario (moat pack)
     for s in lst:
         r = c.post(f"/api/v1/scenarios/{s['id']}/run")
         assert r.status_code == 200, (s["id"], r.text)

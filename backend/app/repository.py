@@ -78,8 +78,9 @@ CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status);
 """
 
 class Repository:
-    def __init__(self, path):
+    def __init__(self, path, force_sqlite=False):
         self.path = path
+        self._force_sqlite = force_sqlite
         self._lock = threading.Lock()
         self._local = threading.local()
         conn = self.conn  # the creating thread's connection; builds the schema
@@ -99,7 +100,10 @@ class Repository:
                     conn.execute("ALTER TABLE audit_log ADD COLUMN fingerprint TEXT")
                 conn.commit()
                 break
-            except sqlite3.OperationalError:
+            except Exception:
+                # sqlite3.OperationalError on SQLite, a psycopg
+                # operational error on Postgres: a cold-start lock
+                # conflict is the only expected failure here.
                 if attempt == 9:
                     raise
                 _time.sleep(0.05 * (attempt + 1))
@@ -114,7 +118,8 @@ class Repository:
         request thread that created them."""
         c = getattr(self._local, "conn", None)
         if c is None:
-            c = sqlite3.connect(self.path, check_same_thread=False)
+            from db import connect as _db_connect
+            c = _db_connect(self.path, force_sqlite=self._force_sqlite)
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("PRAGMA busy_timeout=5000")
             self._local.conn = c

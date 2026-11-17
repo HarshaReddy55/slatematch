@@ -109,7 +109,7 @@ def _dispute_template(tone, f):
             f"Subject: Dispute of deduction on payment {f.get('payment_id', '')} - claim {_money(f.get('claimed_cents', 0))}\n\n"
             f"Dear Accounts Payable team,\n\n"
             f"We are disputing a deduction of {_money(f.get('claimed_cents', 0))} taken on payment "
-            f"{f.get('payment_id', '')}. Our engine classified it as {f.get('classification_label', 'unexplained')} "
+            f"{f.get('payment_id', '')}. Our engine classified it as {f.get('classification_label') or 'a deduction'} "
             f"(ERP reason code {f.get('reason_code', '')}). "
             f"{'The proof of delivery for this shipment was signed clean, and the deduction does not match the agreed terms.' if f.get('pod_clean') else 'We are reviewing the delivery evidence for this shipment, and the deduction does not match the agreed terms.'}\n\n"
             f"{_TONE_OPEN.get(tone, _TONE_OPEN['strict'])}\n\n"

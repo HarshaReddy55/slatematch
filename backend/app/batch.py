@@ -436,6 +436,20 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
         for _prior in repo.reconciled_fingerprints():
             dup_index.seed_prior(_prior["payment_id"], _prior["strong"], _prior["core"], _prior["has_refs"])
         results, exceptions = [], []
+        # Behaviour priors, learned from judged history BEFORE this
+        # run: when several invoice sets add up to a wire exactly and
+        # the wire names none of them, the payer's typical bundle can
+        # confirm the solver's set. Learning proposes - the set must
+        # still be an exact, solver-proven set; the prior never
+        # creates or changes a set, it only lifts an ambiguity hold
+        # when history and arithmetic agree.
+        _profiles_by_key = {}
+        try:
+            from behaviour import build_profiles, _key as _payer_key
+            for _p in build_profiles(repo):
+                _profiles_by_key[_payer_key(_p["payer"])] = _p
+        except Exception:
+            _profiles_by_key = {}
         # Per-agent stage accounting: the Run view's agent pipeline and its
         # payload inspector read these steps, so every figure in them is
         # measured here, in the engine, not reconstructed in the UI.
@@ -506,6 +520,7 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                 # Ambiguity guard: an exact set the wire did not name, when other
                 # exact sets exist, is arithmetic coincidence - propose, never post.
                 ambiguous = False
+                prior_applied = False
                 precomputed_sets = None
                 if status == "OPTIMAL_EXACT_MATCH" and matched_by not in ("reference", "po", "ocr_reference"):
                     plain = (not pay.claimed_deduction_cents) and not res.deduction_applied
@@ -522,9 +537,34 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                         precomputed_sets = _full
                         if _sets and len(_sets) > 1:
                             ambiguous = True
+                            _pre_cap = res.confidence
                             res.confidence = min(res.confidence, 0.75)
                             res.factors["ambiguous_tie"] = True
                             res.factors["exact_sets_found"] = len(_sets)
+                            # Behaviour prior: if this payer's judged
+                            # history has a typical bundle size and
+                            # exactly one tied set has that size - and
+                            # it is the set the solver proved - the
+                            # tie is resolved by learning + proof
+                            # together. Any other shape keeps the hold.
+                            try:
+                                _prof = _profiles_by_key.get(_payer_key(pay.payer_raw))
+                            except Exception:
+                                _prof = None
+                            if _prof and (_prof.get("posted") or 0) >= 2 and _prof.get("typical_bundle"):
+                                _tb = _prof["typical_bundle"]
+                                _chosen_ids = {l.invoice_id for l in res.lines}
+                                _fit = [s for s in _sets if len(s) == _tb
+                                        and {cands[i].invoice_id for i in s} == _chosen_ids]
+                                _prior = {"typical_bundle": _tb,
+                                          "basis_posted": _prof["posted"],
+                                          "applied": bool(len(_fit) == 1)}
+                                res.factors["behaviour_prior"] = _prior
+                                if _prior["applied"]:
+                                    ambiguous = False
+                                    prior_applied = True
+                                    res.confidence = _pre_cap
+                                    res.factors["ambiguous_tie"] = False
                 # Single-customer invariant, enforced on every rung.
                 _inv_by_id = {i.invoice_id: i for i in open_invoices}
                 cross_customer = len({(_inv_by_id[l.invoice_id].customer if l.invoice_id in _inv_by_id else None)
@@ -552,6 +592,15 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                     auto = False
                     decision_reason = ("The solver's set spans invoices of more than one customer - a payment can only "
                                        "clear one customer's invoices, so this is held for analyst review.")
+                if decision_reason is None and prior_applied:
+                    _bp = res.factors.get("behaviour_prior") or {}
+                    decision_reason = (f"Ambiguous exact match resolved by payer behaviour: "
+                                       f"{res.factors.get('exact_sets_found')} invoice sets add up to this wire exactly, "
+                                       f"but {pay.payer_raw}'s judged history ({_bp.get('basis_posted')} posted payments) "
+                                       f"bundles {_bp.get('typical_bundle')} invoice(s) typically and only this set fits "
+                                       "that pattern - the set itself is solver-proven exact. "
+                                       + ("Posted by policy." if auto else
+                                          "Held: confidence is below the automation threshold."))
                 if decision_reason is None:
                     decision_reason = ("Exact match, confidence "
                                        f"{res.confidence:.2f} at or above the {policy.automation_threshold:.2f} threshold - posted by policy."
@@ -573,6 +622,7 @@ def run_batch(repo, payments, policy: Policy, idempotency_key, actor="system", o
                           "rust_kernel_used": bool(res.factors.get("rust_kernel_used")),
                           "solver_path": res.factors.get("solver_path"),
                           "ambiguous_tie": bool(res.factors.get("ambiguous_tie")),
+                          "behaviour_prior": res.factors.get("behaviour_prior"),
                           "greedy_comparison": {"invoices": [l.invoice_id for l in _greedy.lines],
                                                 "residual_cents": _greedy.residual_cents, "status": _greedy.status,
                                                 "reading": "what the first-fit greedy baseline would have done with the same candidates"}}

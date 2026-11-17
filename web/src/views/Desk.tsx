@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import {
   aiWhy,
   sendMail,
@@ -55,12 +56,17 @@ const blankDesk = (): DeskState => ({
 export default function Desk({
   matches,
   exceptions,
-  reloadSignal,
 }: {
   matches: StoredMatch[];
   exceptions: RunException[];
-  reloadSignal: number;
 }) {
+  /* F10 (refresh consolidation): the desk used to take a
+     reloadSignal counter prop from Run; it now subscribes to
+     the shell refresh itself, like every other view. Its items
+     arrive as props from Run's own reload; the tick only
+     re-reads the outbox strip and re-fills drafts. */
+  const [wsTick, setWsTick] = useState(0);
+  useWsRefresh(useCallback(() => setWsTick((n) => n + 1), []));
   const desk: DeskFact[] = matches
     .filter(
       (m) =>
@@ -107,7 +113,7 @@ export default function Desk({
     return () => {
       live = false;
     };
-  }, [reloadSignal, outboxTick]);
+  }, [wsTick, outboxTick]);
 
   const [deskState, setDeskState] = useState<Record<string, DeskState>>({});
   const [chaseState, setChaseState] = useState<
@@ -170,7 +176,7 @@ export default function Desk({
     desk.forEach((f) => fillDesk(f, "strict"));
     chase.forEach((f) => fillChase(f));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deskKey, chaseKey, reloadSignal]);
+  }, [deskKey, chaseKey, wsTick]);
 
   if (!desk.length && !chase.length) return null;
 

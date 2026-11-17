@@ -112,14 +112,17 @@ export default function Product() {
             ))}
           </div>
           <p className="text-[13.5px] leading-[1.65] mt-4">
-            <b>Roadmap, honestly labelled.</b> Live ERP write-back (SAP,
-            Oracle, NetSuite), persistent multi-tenant storage on
-            Postgres, and SOC 2 are the known table-stakes gaps for
-            enterprise sale. Bank-file ingestion (BAI2, MT940, camt.054)
-            shipped in the enterprise build and is no longer a gap. This
-            build covers the decision core those integrations feed:
-            matching, deductions, forecast, collections, evaluation and
-            audit.
+            <b>Roadmap, honestly labelled.</b> A live ERP on the other
+            end of the write-back (the SAP, Oracle and NetSuite
+            envelopes are built and validated against a simulated
+            connection), SOC 2, and a background job queue with
+            multi-worker serving are the known table-stakes gaps for
+            enterprise sale. Bank-file ingestion (BAI2, MT940,
+            camt.054) shipped in the enterprise build, and dual-mode
+            Postgres storage shipped with the moat build - neither is
+            a gap any longer. This build covers the decision core
+            those integrations feed: matching, deductions, forecast,
+            collections, evaluation and audit.
           </p>
           <p className="text-[13.5px] leading-[1.65] mb-0">
             <b>Honesty labels.</b> All data in this workspace is synthetic

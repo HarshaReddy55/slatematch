@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
-import type { WorkspaceFull } from "../lib/chrome";
+import { fetchWorkspace, type WorkspaceFull } from "../lib/chrome";
 import {
   briefOutcome,
   invalidateBrief,
@@ -93,7 +93,7 @@ export default function CaseBrief({ view }: { view: string }) {
 
   const load = useCallback(async () => {
     try {
-      const d = await api<WorkspaceFull>("/api/v1/workspace");
+      const d = await fetchWorkspace();
       setWs(d);
     } catch {
       /* the views surface their own load errors */

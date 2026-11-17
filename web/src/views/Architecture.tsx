@@ -59,7 +59,7 @@ const COMPONENTS: [string, string][] = [
   ],
   [
     "Data",
-    "SQLite (WAL), database-per-tenant isolation; Postgres-compatible schema discipline",
+    "Dual-mode storage: SQLite (WAL) database-per-tenant by default; PostgreSQL, one schema per tenant, when SLATEMATCH_DATABASE_URL is set - one code path, the dialect translated at the seam",
   ],
   [
     "Tenancy + security",
@@ -101,8 +101,8 @@ const TOPOLOGY: [string, string][] = [
     "Desired count 1 for this demo posture. The health-check path is /health; /ready gates traffic on the control database, data directory and models.",
   ],
   [
-    "Container → per-tenant SQLite stores",
-    "One database file per tenant on an EFS volume mounted into the task, so the ledger survives task replacement; the schema discipline is Postgres-compatible for the production path.",
+    "Container → per-tenant stores (SQLite files, or Postgres schemas)",
+    "One store per tenant - a database file on the EFS volume mounted into the task, or a schema in Postgres - so the ledger survives task replacement; the migration script copies an existing SQLite data directory into Postgres when the deployment cuts over.",
   ],
   [
     "CI: GitHub push → Actions → ECR → Update service",

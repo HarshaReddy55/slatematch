@@ -1,7 +1,9 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
-import { useWsRefresh } from "../lib/chrome";
+import { useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import {
   aiWhy,
   goView,
@@ -140,7 +142,7 @@ export default function Mail() {
     setError("");
     Promise.all([
       api<MailHub>("/api/v1/mail/hub"),
-      api<WorkspaceOperate>("/api/v1/workspace").catch(() => null),
+      fetchWorkspace().catch(() => null),
     ])
       .then(([h, w]) => {
         setHub(h);
@@ -221,6 +223,7 @@ export default function Mail() {
                 payer: d.payer,
                 claimed_cents: d.claimed_cents,
                 reason_code: d.reason_code,
+                classification_label: d.classification || "deduction",
                 win_probability: d.win_probability,
                 expected_recovery_usd: d.expected_recovery_usd,
                 pod_clean: !!d.pod_clean,

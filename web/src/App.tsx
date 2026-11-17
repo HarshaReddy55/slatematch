@@ -1,20 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import logoGlass from "./assets/logo-glass.png";
 import Dashboard from "./views/Dashboard";
-import Cases from "./views/Cases";
-import Upload from "./views/Upload";
-import Run from "./views/Run";
-import Sap from "./views/Sap";
-import Ledger from "./views/Ledger";
-import Forecast from "./views/Forecast";
-import Mail from "./views/Mail";
-import Policy from "./views/Policy";
-import Eval from "./views/Eval";
-import Health from "./views/Health";
-import Methodology from "./views/Methodology";
-import Architecture from "./views/Architecture";
-import Product from "./views/Product";
+import ViewSkeleton from "./ui/Skeleton";
+
+/* F9 (bundle splitting): every view but the landing Dashboard is
+   a lazy chunk, and react/react-dom/motion sit in a vendor chunk
+   (vite.config), so the first load on the public link pays for
+   the shell plus Dashboard only; the rest stream in on first
+   navigation behind the standard skeleton. */
+const Cases = lazy(() => import("./views/Cases"));
+const Upload = lazy(() => import("./views/Upload"));
+const Run = lazy(() => import("./views/Run"));
+const Sap = lazy(() => import("./views/Sap"));
+const Ledger = lazy(() => import("./views/Ledger"));
+const Forecast = lazy(() => import("./views/Forecast"));
+const Mail = lazy(() => import("./views/Mail"));
+const Policy = lazy(() => import("./views/Policy"));
+const Eval = lazy(() => import("./views/Eval"));
+const Health = lazy(() => import("./views/Health"));
+const Methodology = lazy(() => import("./views/Methodology"));
+const Architecture = lazy(() => import("./views/Architecture"));
+const Product = lazy(() => import("./views/Product"));
+const Integrations = lazy(() => import("./views/Integrations"));
+const S = (el: ReactNode) => (
+  <Suspense fallback={<ViewSkeleton kind="panels" />}>{el}</Suspense>
+);
 import { NAV_SPRING } from "./ui/motion";
 import Casebar from "./ui/Casebar";
 import CaseBrief from "./ui/CaseBrief";
@@ -78,7 +89,8 @@ export type ViewKey =
   | "health"
   | "method"
   | "arch"
-  | "product";
+  | "product"
+  | "integrations";
 
 /* Stage 6: grp carries vanilla's navrow group labels (index.html
    nav: OPERATE / INSIGHT & GOVERNANCE / EVALS & ARCHITECTURE).
@@ -103,6 +115,7 @@ const VIEWS: { key: ViewKey; num: string; label: string; grp: string }[] = [
   { key: "method", num: "12", label: "Methodology", grp: "EVALS & ARCHITECTURE" },
   { key: "arch", num: "13", label: "Architecture", grp: "EVALS & ARCHITECTURE" },
   { key: "product", num: "14", label: "Product Thinking", grp: "EVALS & ARCHITECTURE" },
+  { key: "integrations", num: "15", label: "Integrations", grp: "CONNECTIONS" },
 ];
 
 function fromHash(): ViewKey {
@@ -393,19 +406,20 @@ export default function App() {
             <CaseBrief view={view} />
             {diffOpen && <RunDiff onClose={() => setDiffOpen(false)} />}
             {view === "dash" && <Dashboard toast={toast} />}
-            {view === "cases" && <Cases />}
-            {view === "upload" && <Upload />}
-            {view === "run" && <Run />}
-            {view === "sap" && <Sap />}
-            {view === "ledger" && <Ledger toast={toast} />}
-            {view === "forecast" && <Forecast toast={toast} />}
-            {view === "mail" && <Mail />}
-            {view === "policy" && <Policy toast={toast} />}
-            {view === "eval" && <Eval />}
-            {view === "health" && <Health />}
-            {view === "method" && <Methodology />}
-            {view === "arch" && <Architecture />}
-            {view === "product" && <Product />}
+            {view === "cases" && S(<Cases />)}
+            {view === "upload" && S(<Upload />)}
+            {view === "run" && S(<Run />)}
+            {view === "sap" && S(<Sap />)}
+            {view === "ledger" && S(<Ledger toast={toast} />)}
+            {view === "forecast" && S(<Forecast toast={toast} />)}
+            {view === "mail" && S(<Mail />)}
+            {view === "policy" && S(<Policy toast={toast} />)}
+            {view === "eval" && S(<Eval />)}
+            {view === "health" && S(<Health />)}
+            {view === "method" && S(<Methodology />)}
+            {view === "arch" && S(<Architecture />)}
+            {view === "product" && S(<Product />)}
+            {view === "integrations" && S(<Integrations />)}
 
             <p className="font-mono text-[11px] text-mut2 m-0">
               Every figure is computed live from this workspace's API responses.

@@ -22,7 +22,9 @@ import {
   type WorkspaceOperate,
 } from "../lib/operate";
 import { gradeCase, normalisedStored } from "../lib/insight";
-import { requestShellRefresh } from "../lib/chrome";
+import { requestShellRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import Orb from "../ui/Orb";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
@@ -111,14 +113,21 @@ const AGENT_ORBS: [string, string][] = [
 export default function Run() {
   const [data, setData] = useState<RunData | null>(null);
   const [error, setError] = useState("");
-  const [agentSel, setAgentSel] = useState(2);
+  const [agentSel, setAgentSel] = useState(-1);
+  /* Owner rule (17 Nov 2026): the run itself - live lanes, the
+     agent strip and the agent payloads - stays hidden until the
+     user asks for the live run or expands it. Results, approvals,
+     exceptions and the audit record below are the standing page. */
+  const [showRunPanel, setShowRunPanel] = useState(false);
   const [algoOpen, setAlgoOpen] = useState(false);
   const [detail, setDetail] = useState<{
     match: StoredMatch;
     payment: PaymentFull | null;
   } | null>(null);
-  const [apprReload, setApprReload] = useState(0);
-  const [deskReload, setDeskReload] = useState(0);
+  /* F10: Approvals and Desk subscribe to the shell refresh
+     themselves now; the reloadSignal counters are gone. Every
+     site that incremented them already fired
+     requestShellRefresh(). */
   const [auditCopied, setAuditCopied] = useState(false);
 
   // live run state
@@ -156,7 +165,7 @@ export default function Run() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const ws = await api<WorkspaceOperate>("/api/v1/workspace");
+      const ws = await fetchWorkspace();
       let matches: StoredMatch[] = [];
       let exceptions: RunException[] = [];
       let agents: AgentRecord[] = [];
@@ -325,7 +334,7 @@ export default function Run() {
   const runLive = useCallback(async () => {
     if (runBusy.current) return;
     runBusy.current = true;
-    const ws = await api<WorkspaceOperate>("/api/v1/workspace").catch(
+    const ws = await fetchWorkspace().catch(
       () => null
     );
     if (!ws || !ws.staged_payments) {
@@ -336,6 +345,7 @@ export default function Run() {
       return;
     }
     setRunning(true);
+    setShowRunPanel(true);
     setLiveError("");
     setLiveSummary(null);
     setLanes([]);
@@ -537,15 +547,13 @@ export default function Run() {
     /* Vanilla: a landed run invalidates the brief and refreshes
        every workspace surface (assist.js, on stream end). */
     requestShellRefresh();
-    setApprReload((n) => n + 1);
-    setDeskReload((n) => n + 1);
   }, [running, load]);
 
   /* ---------------- non-streaming run (runWorkspaceBatch) ---------- */
   const runBatch = useCallback(async () => {
     if (runBusy.current) return;
     runBusy.current = true;
-    const ws = await api<WorkspaceOperate>("/api/v1/workspace").catch(
+    const ws = await fetchWorkspace().catch(
       () => null
     );
     const pays = ws?.all_payments || [];
@@ -606,8 +614,6 @@ export default function Run() {
       /* Vanilla: a finished batch run invalidates the brief and
          refreshes every workspace surface (operate.js). */
       requestShellRefresh();
-      setApprReload((n) => n + 1);
-      setDeskReload((n) => n + 1);
     }
   }, [running, load]);
 
@@ -800,7 +806,6 @@ export default function Run() {
       });
       await load();
       requestShellRefresh();
-      setApprReload((n) => n + 1);
     } catch (e) {
       setLiveError(e instanceof Error ? e.message : String(e));
     }
@@ -967,6 +972,24 @@ export default function Run() {
       setReplayError(e instanceof Error ? e.message : String(e));
     }
   };
+  const downloadPeriodEvidence = async () => {
+    try {
+      const d = await api<Record<string, unknown>>(
+        `/api/v1/evidence/period?days=30`
+      );
+      const blob = new Blob([JSON.stringify(d, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `slatematch-evidence-period-30d.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const gradeResult =
     data?.grade?.kind === "case" && data.ws.case
@@ -1077,6 +1100,26 @@ export default function Run() {
           {/* ---------- agent strip ---------- */}
           <Rise i={1}>
             <Panel title="The agent team on this run">
+              {!showRunPanel && !liveStages ? (
+                <div className="flex items-center gap-3 flex-wrap mt-2">
+                  <p className="text-[13px] text-mut m-0">
+                    {data.agents.length
+                      ? "The agent record of the latest run is kept here, hidden until you ask for it. Run the case live and it appears on its own while the agents work; agent payloads open only when you click an agent."
+                      : "Nothing to show yet. Run the case live and the agent team appears here while it works."}
+                  </p>
+                  <GhostBtn onClick={() => setShowRunPanel(true)}>
+                    Show the run
+                  </GhostBtn>
+                </div>
+              ) : (
+                <>
+                  {!liveStages && (
+                    <div className="mt-2">
+                      <GhostBtn onClick={() => setShowRunPanel(false)}>
+                        Hide the run
+                      </GhostBtn>
+                    </div>
+                  )}
               {liveStages ? (
                 <>
                   <div className="flex gap-2 flex-wrap items-stretch mt-3">
@@ -1168,7 +1211,7 @@ export default function Run() {
                               ? "border-blue"
                               : "border-line"
                           }`}
-                          onClick={() => setAgentSel(i)}
+                          onClick={() => setAgentSel(agentSel === i ? -1 : i)}
                         >
                           <b className="text-[13px]">
                             {AGENT_SHORT[a.agent] || a.agent}
@@ -1269,6 +1312,8 @@ export default function Run() {
                   </DataTable>
                 </Reveal>
               </div>
+                </>
+              )}
             </Panel>
           </Rise>
 
@@ -1333,7 +1378,14 @@ export default function Run() {
                   Upload different files
                 </GhostBtn>
               </div>
-              {lanes !== null && (
+              {lanes !== null && !showRunPanel && !running && (
+                <div className="mt-3">
+                  <GhostBtn onClick={() => setShowRunPanel(true)}>
+                    Show the live run view
+                  </GhostBtn>
+                </div>
+              )}
+              {lanes !== null && showRunPanel && (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-4 items-start">
                   <div className="flex flex-col gap-2">
                     {lanes.map((l) => (
@@ -1774,6 +1826,9 @@ export default function Run() {
                       <GhostBtn onClick={downloadEvidence}>
                         Download evidence pack (JSON)
                       </GhostBtn>
+                      <GhostBtn onClick={downloadPeriodEvidence}>
+                        Period pack - last 30 days
+                      </GhostBtn>
                       <span className="text-[12px] text-mut">
                         Replay re-runs this run's payments in a scratch
                         session under the policy a fresh run would use
@@ -1829,7 +1884,6 @@ export default function Run() {
           <Rise i={6}>
             <div id="approvals-queue">
               <Approvals
-                reloadSignal={apprReload}
                 onEvidence={openEvidence}
                 onDecided={() => {
                   load();
@@ -1848,7 +1902,6 @@ export default function Run() {
               <Desk
                 matches={data.matches}
                 exceptions={data.exceptions}
-                reloadSignal={deskReload}
               />
             </Rise>
           )}

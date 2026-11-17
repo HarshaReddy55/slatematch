@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money, type MatchRecord } from "../lib/api";
-import { useWsRefresh } from "../lib/chrome";
+import { useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import {
   disputeClaims,
   drillRows,
@@ -49,6 +51,20 @@ interface FcData {
   promises: PromiseRow[];
 }
 
+interface CreditRow {
+  customer: string; signal: string; reasons: string[];
+  suggested_action: string; open_exposure_cents: number;
+  payments_judged: number; avg_predicted_delay_days: number;
+  broken_promises: number;
+}
+interface TreasuryWeek {
+  week: number; expected_p50_cents: number | null;
+  actual_cents: number | null; variance_cents: number | null;
+}
+interface TreasuryData {
+  state: string; weeks: TreasuryWeek[]; open_ar_cents?: number;
+  posted_total_cents?: number; suspense_cents?: number; note?: string;
+}
 interface PredictionRow {
   invoice_id: string;
   customer: string;
@@ -93,6 +109,9 @@ export default function Forecast({
   const [mc, setMc] = useState<McState | null>(null);
   const mcRef = useRef<HTMLDivElement>(null);
   const [promiseDates, setPromiseDates] = useState<Record<string, string>>({});
+  const [credit, setCredit] = useState<CreditRow[]>([]);
+  const [treasury, setTreasury] = useState<TreasuryData | null>(null);
+  const [escNote, setEscNote] = useState("");
 
   /* The collections agent acts: a promise to pay is logged against
      the invoice (its kept/broken status is derived from the ledger
@@ -202,7 +221,7 @@ export default function Forecast({
       const [f, c, ws, preds, promises] = await Promise.all([
         api<ForecastData>("/api/v1/forecast"),
         api<CollectionRow[]>("/api/v1/collections"),
-        api<WorkspaceFull>("/api/v1/workspace"),
+        fetchWorkspace(),
         api<{ state: string; expected: PredictionRow[]; expected_14d_cents: number }>(
           "/api/v1/predictions"
         ).catch(() => ({ state: "empty", expected: [] as PredictionRow[], expected_14d_cents: 0 })),
@@ -210,6 +229,10 @@ export default function Forecast({
           .then((d) => d.promises || [])
           .catch(() => [] as PromiseRow[]),
       ]);
+      api<{ signals: CreditRow[] }>("/api/v1/credit-signals")
+        .then((d) => setCredit(d.signals || [])).catch(() => setCredit([]));
+      api<TreasuryData>("/api/v1/treasury")
+        .then(setTreasury).catch(() => setTreasury(null));
       let claims: DisputeClaim[] = [];
       if (ws.latest_run) {
         const raw = await api<MatchRecord[] | { matches: MatchRecord[] }>(
@@ -338,7 +361,12 @@ export default function Forecast({
       {data && ready && chart && f && (
         <>
           <Rise i={1}>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+          {/* Organization pass (17 Nov 2026): this pair used to sit
+              two-up, and the collections queue's action cell (Draft
+              reminder + promise date + Log promise) clipped at the
+              panel edge. Both panels earn the full width - the
+              forecast table and the queue stack instead. */}
+          <div className="grid grid-cols-1 gap-4 items-start">
             <Panel title="Cash-in forecast - next 8 weeks">
               <div className="flex gap-4 flex-wrap mt-2 text-[12px] text-mut">
                 <span>
@@ -528,7 +556,7 @@ export default function Forecast({
                       <Td>{r.overdue_days}d</Td>
                       <Td>{r.predicted_delay_days}d</Td>
                       <Td>
-                        <b>{r.priority_score}</b>
+                        <b>{Math.round(r.priority_score).toLocaleString("en-US")}</b>
                       </Td>
                       <Td className="whitespace-nowrap">
                         {/* Stage 6 (Item 6): vanilla's Draft
@@ -911,6 +939,86 @@ export default function Forecast({
             ) : (
               <p className="text-sm text-mut mb-0 mt-2">No customers.</p>
             )}
+          </Panel>
+          </Rise>
+
+          <Rise i={5}>
+          <Panel
+            title="Treasury - forecast vs actual"
+            sub="What the forecast expects, week by week, against what runs actually posted. The current week carries the actual and the variance; later weeks are expectation only. Totals are the position a CFO asks for first."
+          >
+            {treasury && treasury.state === "ready" ? (
+              <>
+                <div className="flex gap-6 flex-wrap mt-2 text-[13px]">
+                  <span>Open AR <b className="font-mono">{money(treasury.open_ar_cents || 0)}</b></span>
+                  <span>Posted to date <b className="font-mono">{money(treasury.posted_total_cents || 0)}</b></span>
+                  <span>In suspense <b className="font-mono">{money(treasury.suspense_cents || 0)}</b></span>
+                </div>
+                <DataTable
+                  head={<><Th>Week</Th><Th>Expected (P50)</Th><Th>Actual posted</Th><Th>Variance</Th></>}
+                >
+                  {treasury.weeks.map((w) => (
+                    <Row key={w.week}>
+                      <Td>Week {w.week}</Td>
+                      <Td className="font-mono text-[12px]">{w.expected_p50_cents != null ? money(w.expected_p50_cents) : "-"}</Td>
+                      <Td className="font-mono text-[12px]">{w.actual_cents != null ? money(w.actual_cents) : "-"}</Td>
+                      <Td className="font-mono text-[12px]">{w.variance_cents != null ? money(w.variance_cents) : "-"}</Td>
+                    </Row>
+                  ))}
+                </DataTable>
+              </>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">{treasury?.note || "Run a batch first - the treasury view reads the post-reconciliation ledger."}</p>
+            )}
+          </Panel>
+          </Rise>
+
+          <Rise i={6}>
+          <Panel
+            title="Credit signals - who is deteriorating"
+            sub="A live credit read per customer from this workspace's own records: judged payment behaviour, open exposure, broken promises. Deterministic rules, every signal carries its reasons - a heuristic for a credit conversation, not a bureau score."
+          >
+            {credit.length ? (
+              <DataTable
+                head={<><Th>Customer</Th><Th>Signal</Th><Th>Why</Th><Th>Open exposure</Th><Th>Suggested action</Th></>}
+              >
+                {credit.map((r) => (
+                  <Row key={r.customer}>
+                    <Td><b>{r.customer}</b></Td>
+                    <Td>
+                      <Pill kind={r.signal === "STRONG" ? "ok" : r.signal === "STEADY" ? "info" : r.signal === "WATCH" ? "warn" : "bad"}>
+                        {r.signal}
+                      </Pill>
+                    </Td>
+                    <Td><span className="block min-w-[220px] whitespace-normal break-words leading-[1.55]">{r.reasons.join("; ")}</span></Td>
+                    <Td className="font-mono text-[12px]">{money(r.open_exposure_cents)}</Td>
+                    <Td><span className="block min-w-[200px] whitespace-normal break-words leading-[1.55]">{r.suggested_action}</span></Td>
+                  </Row>
+                ))}
+              </DataTable>
+            ) : (
+              <p className="text-sm text-mut mb-0 mt-2">No judged history yet - signals appear once payments have been decided.</p>
+            )}
+            <div className="flex items-center gap-3 flex-wrap mt-3">
+              <GhostBtn
+                onClick={async () => {
+                  setEscNote("");
+                  try {
+                    const r = await api<{ escalated: unknown[]; window_days: number }>(
+                      "/api/v1/collections/escalate", { method: "POST" });
+                    setEscNote(r.escalated.length
+                      ? `Escalation pass drafted ${r.escalated.length} notice(s) into the Outbox (policy window ${r.window_days} days).`
+                      : "Escalation pass ran - nothing qualified today.");
+                    load();
+                  } catch (e) {
+                    setEscNote(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Run the collections escalation pass
+              </GhostBtn>
+              {escNote && <span className="text-[12.5px] text-mut">{escNote}</span>}
+            </div>
           </Panel>
           </Rise>
 

@@ -26,7 +26,6 @@ import DataTable, { Row, Td, Th } from "../ui/DataTable";
 import ViewHead, { LoadError } from "../ui/ViewHead";
 import ViewSkeleton from "../ui/Skeleton";
 import { EASE_OUT, RefreshFade, Reveal, Rise } from "../ui/motion";
-import { GhostBtn } from "../ui/Stage3";
 
 /* Stage 2: Agent Health, migrated. Cards, model quality, readiness
    and diagnostics mirror loadHealth() + loadDiag() in the vanilla
@@ -47,10 +46,6 @@ interface HealthData {
   trend: EvalTrend | null;
   criteria: CriterionRow[];
   criteriaNote: string;
-  webhooks: WebhookRow[];
-  deliveries: DeliveryRow[];
-  feedEvents: FeedEventRow[];
-  portalLinks: { link_id: string; customer: string; revoked: boolean }[];
 }
 
 interface BehaviourProfile {
@@ -64,27 +59,6 @@ interface BehaviourProfile {
   duplicates: number;
 }
 
-interface WebhookRow {
-  webhook_id: string;
-  url: string;
-  events: string;
-  active: boolean;
-}
-interface DeliveryRow {
-  id: number;
-  webhook_id: string;
-  event: string;
-  status_code: number | null;
-  ok: boolean;
-  error: string;
-  created_at: string;
-}
-interface FeedEventRow {
-  id: number;
-  kind: string;
-  summary: string;
-  created_at: string;
-}
 
 interface CriterionRow {
   criterion: string;
@@ -133,12 +107,6 @@ function MiniCard({
 export default function Health() {
   const [data, setData] = useState<HealthData | null>(null);
   const [error, setError] = useState("");
-  const [hookUrl, setHookUrl] = useState("");
-  const [hookEvents, setHookEvents] = useState("run.completed");
-  const [hookNote, setHookNote] = useState("");
-  const [portalCustomer, setPortalCustomer] = useState("");
-  const [portalUrl, setPortalUrl] = useState("");
-  const [portalNote, setPortalNote] = useState("");
   const [selRun, setSelRun] = useState<number | null>(null);
   const reduce = useReducedMotion();
 
@@ -149,7 +117,7 @@ export default function Health() {
         api<HealthFull>("/health"),
         api<ReadyData>("/ready"),
       ]);
-      const [diag, audit, runs, profiles, trend, criteriaPack, hooksPack, feedPack, portalPack] = await Promise.all([
+      const [diag, audit, runs, profiles, trend, criteriaPack] = await Promise.all([
         api<Diagnostics>("/api/v1/diagnostics").catch(() => null),
         api<AuditEntry[]>("/api/v1/audit").catch(() => [] as AuditEntry[]),
         api<RunSummary[]>("/api/v1/runs").catch(() => [] as RunSummary[]),
@@ -159,12 +127,6 @@ export default function Health() {
         api<EvalTrend>("/api/v1/evaluations/trend").catch(() => null),
         api<{ criteria: CriterionRow[]; note: string }>("/api/v1/success-criteria")
           .catch(() => ({ criteria: [] as CriterionRow[], note: "" })),
-        api<{ webhooks: WebhookRow[]; deliveries: DeliveryRow[] }>("/api/v1/webhooks")
-          .catch(() => ({ webhooks: [] as WebhookRow[], deliveries: [] as DeliveryRow[] })),
-        api<{ events: FeedEventRow[] }>("/api/v1/feeds/events")
-          .catch(() => ({ events: [] as FeedEventRow[] })),
-        api<{ links: { link_id: string; customer: string; revoked: boolean }[] }>("/api/v1/portal-links")
-          .catch(() => ({ links: [] })),
       ]);
       // Held counts come from each run's own matches payload (PROPOSED
       // rows), the same records the Status Bar colour rule reads.
@@ -186,10 +148,6 @@ export default function Health() {
       setData({
         h, r, diag, audit, runs, heldByRun, profiles, trend,
         criteria: criteriaPack.criteria || [],
-        webhooks: hooksPack.webhooks || [],
-        deliveries: hooksPack.deliveries || [],
-        feedEvents: feedPack.events || [],
-        portalLinks: portalPack.links || [],
         criteriaNote: criteriaPack.note || "",
       });
     })().catch((e) => setError(e instanceof Error ? e.message : String(e)));
@@ -249,7 +207,7 @@ export default function Health() {
                 {aiModeLabel(h.gemini_configured, h.gemini_last_error)}
               </span>
             </MiniCard>
-            <MiniCard label="Data directory" note="Per-tenant SQLite stores">
+            <MiniCard label="Data directory" note="Per-tenant stores (SQLite files, or Postgres schemas)">
               <span className="font-display text-[20px] font-semibold break-all">
                 {h.data_dir}
               </span>
@@ -607,211 +565,6 @@ export default function Health() {
           </Rise>
 
           <Rise i={8}>
-          <Panel
-            title="Integrations - webhooks and feeds"
-            sub="Webhooks fire on run completion, approval decisions, dispute transitions and reversals; every delivery attempt is logged with its real outcome. Private and loopback URLs are refused. The remittance mailbox (POST /api/v1/feeds/remittance) stages emailed advices into the workspace - its recent events are listed here."
-          >
-            <div className="flex items-end gap-2 flex-wrap mt-2">
-              <label className="flex flex-col gap-1 text-[12px] text-mut">
-                Webhook URL
-                <input
-                  value={hookUrl}
-                  onChange={(e) => setHookUrl(e.target.value)}
-                  placeholder="https://your-system.example/hook"
-                  className="bg-panel2 border border-line text-ink text-[13px] px-2.5 py-1.5 w-[300px]"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[12px] text-mut">
-                Events
-                <select
-                  value={hookEvents}
-                  onChange={(e) => setHookEvents(e.target.value)}
-                  className="bg-panel2 border border-line text-ink text-[13px] px-2.5 py-1.5"
-                >
-                  <option value="run.completed">Run completed</option>
-                  <option value="approval.decided">Approval decided</option>
-                  <option value="dispute.transitioned">Dispute transitioned</option>
-                  <option value="match.reversed">Match reversed</option>
-                  <option value="all">All events</option>
-                </select>
-              </label>
-              <GhostBtn
-                onClick={async () => {
-                  setHookNote("");
-                  try {
-                    await api("/api/v1/webhooks", {
-                      method: "POST",
-                      body: JSON.stringify({ url: hookUrl, events: hookEvents }),
-                    });
-                    setHookUrl("");
-                    load();
-                  } catch (e) {
-                    setHookNote(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Add webhook
-              </GhostBtn>
-              {hookNote && <span className="text-[12.5px] text-mut">{hookNote}</span>}
-            </div>
-            {data.webhooks.length > 0 && (
-              <DataTable
-                head={
-                  <>
-                    <Th>URL</Th>
-                    <Th>Events</Th>
-                    <Th>{""}</Th>
-                  </>
-                }
-              >
-                {data.webhooks.map((w) => (
-                  <Row key={w.webhook_id}>
-                    <Td className="font-mono text-[12px]">{w.url}</Td>
-                    <Td>{w.events}</Td>
-                    <Td>
-                      <GhostBtn
-                        onClick={async () => {
-                          await api(`/api/v1/webhooks/${w.webhook_id}`, { method: "DELETE" }).catch(() => {});
-                          load();
-                        }}
-                      >
-                        Remove
-                      </GhostBtn>
-                    </Td>
-                  </Row>
-                ))}
-              </DataTable>
-            )}
-            {data.deliveries.length > 0 && (
-              <>
-                <p className="text-[13px] m-0 mt-4 mb-1"><b>Recent deliveries</b></p>
-                <DataTable
-                  head={
-                    <>
-                      <Th>Event</Th>
-                      <Th>HTTP</Th>
-                      <Th>Outcome</Th>
-                      <Th>When</Th>
-                    </>
-                  }
-                >
-                  {data.deliveries.slice(0, 8).map((d) => (
-                    <Row key={d.id}>
-                      <Td>{d.event}</Td>
-                      <Td>{d.status_code ?? "-"}</Td>
-                      <Td>
-                        <Pill kind={d.ok ? "ok" : "bad"}>{d.ok ? "DELIVERED" : "FAILED"}</Pill>
-                        {d.error ? <span className="block text-[11.5px] text-mut mt-1">{d.error}</span> : null}
-                      </Td>
-                      <Td className="font-mono text-[11.5px]">{d.created_at.slice(0, 19).replace("T", " ")}</Td>
-                    </Row>
-                  ))}
-                </DataTable>
-              </>
-            )}
-            {data.feedEvents.length > 0 && (
-              <>
-                <p className="text-[13px] m-0 mt-4 mb-1"><b>Feed events</b></p>
-                {data.feedEvents.slice(0, 6).map((f) => (
-                  <p key={f.id} className="text-[12.5px] text-mut m-0 mt-1">
-                    <span className="font-mono text-[11.5px]">{f.created_at.slice(0, 19).replace("T", " ")}</span>{" "}
-                    - {f.kind} - {f.summary}
-                  </p>
-                ))}
-              </>
-            )}
-            {!data.webhooks.length && !data.feedEvents.length && (
-              <p className="text-sm text-mut mb-0 mt-2">
-                No webhooks registered and no feed events yet.
-              </p>
-            )}
-            <p className="text-[13px] m-0 mt-5 mb-1">
-              <b>Payer portal links</b>
-            </p>
-            <p className="text-[12.5px] text-mut m-0">
-              A portal link shows one customer only their own open invoices,
-              payment statuses and disputes, and lets them send remittance
-              advice, promise a payment date, and respond to a deduction
-              claim. The token is stored hashed and the full link is shown
-              once - share it only with that customer. Revoking is immediate.
-            </p>
-            <div className="flex items-end gap-2 flex-wrap mt-2">
-              <label className="flex flex-col gap-1 text-[12px] text-mut">
-                Customer name (exactly as on their invoices)
-                <input
-                  value={portalCustomer}
-                  onChange={(e) => setPortalCustomer(e.target.value)}
-                  placeholder="e.g. BluePeak Electronics"
-                  className="bg-panel2 border border-line text-ink text-[13px] px-2.5 py-1.5 w-[300px]"
-                />
-              </label>
-              <GhostBtn
-                onClick={async () => {
-                  setPortalNote("");
-                  setPortalUrl("");
-                  try {
-                    const d = await api<{ url: string }>("/api/v1/portal-links", {
-                      method: "POST",
-                      body: JSON.stringify({ customer: portalCustomer }),
-                    });
-                    setPortalUrl(window.location.origin + d.url);
-                    setPortalCustomer("");
-                    load();
-                  } catch (e) {
-                    setPortalNote(e instanceof Error ? e.message : String(e));
-                  }
-                }}
-              >
-                Create portal link
-              </GhostBtn>
-              {portalNote && <span className="text-[12.5px] text-mut">{portalNote}</span>}
-            </div>
-            {portalUrl && (
-              <p className="text-[13px] m-0 mt-2">
-                Link (shown once):{" "}
-                <span className="font-mono text-[12px] break-all">{portalUrl}</span>
-              </p>
-            )}
-            {data.portalLinks.length > 0 && (
-              <DataTable
-                head={
-                  <>
-                    <Th>Link</Th>
-                    <Th>Customer</Th>
-                    <Th>Status</Th>
-                    <Th>{""}</Th>
-                  </>
-                }
-              >
-                {data.portalLinks.map((l) => (
-                  <Row key={l.link_id}>
-                    <Td className="font-mono text-[12px]">{l.link_id}</Td>
-                    <Td>{l.customer}</Td>
-                    <Td>
-                      <Pill kind={l.revoked ? "bad" : "ok"}>
-                        {l.revoked ? "REVOKED" : "ACTIVE"}
-                      </Pill>
-                    </Td>
-                    <Td>
-                      {!l.revoked && (
-                        <GhostBtn
-                          onClick={async () => {
-                            await api(`/api/v1/portal-links/${l.link_id}`, { method: "DELETE" }).catch(() => {});
-                            load();
-                          }}
-                        >
-                          Revoke
-                        </GhostBtn>
-                      )}
-                    </Td>
-                  </Row>
-                ))}
-              </DataTable>
-            )}
-          </Panel>
-          </Rise>
-
-          <Rise i={9}>
           <Panel
             title="Audit trail"
             sub="Runs, approvals, rejections and policy changes, written by the server when they occur. Entries cannot be edited from this interface."

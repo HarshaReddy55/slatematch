@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, authHeaders, money } from "../lib/api";
-import { useWsRefresh } from "../lib/chrome";
+import { useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import {
   PARSE_SAMPLE,
   SAMPLE_INV,
@@ -32,6 +34,18 @@ import { GhostBtn, PrimaryBtn, StagedTable } from "../ui/Stage3";
    card (blueprint 3 dedup), and the pre-filled sample carries a
    true-status line once its references are settled. All endpoints
    and the parsing pipeline are vanilla's. */
+
+interface FuseBundle {
+  fields: { payer: string; amount_cents: number; references: string[];
+            deduction_cents: number; deduction_reason: string };
+  provenance: { amount_cents: string; payer: string; deduction_cents: string;
+                references: Record<string, string[]> };
+  conflicts: { field: string; values: Record<string, number | string>;
+               winner: string; winning_value: number | string; rule: string }[];
+  sources_seen: string[];
+  rule: string;
+}
+interface FuseResult { bundle: FuseBundle; staged_payment_id?: string }
 
 interface QueueItem {
   id: number;
@@ -186,6 +200,11 @@ function Quarantine({ errors }: { errors?: { row: number; error: string }[] }) {
 
 export default function Upload() {
   const [ws, setWs] = useState<WorkspaceOperate | null>(null);
+  const [fuseBank, setFuseBank] = useState("");
+  const [fuseEmail, setFuseEmail] = useState("");
+  const [fusePdf, setFusePdf] = useState("");
+  const [fuseResult, setFuseResult] = useState<FuseResult | null>(null);
+  const [fuseNote, setFuseNote] = useState("");
   const [error, setError] = useState("");
   const [queue, setQueue] = useState<QueueItem[]>([]);
 
@@ -225,7 +244,7 @@ export default function Upload() {
   const parseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadWs = useCallback(() => {
-    api<WorkspaceOperate>("/api/v1/workspace")
+    fetchWorkspace()
       .then(setWs)
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -396,7 +415,7 @@ export default function Upload() {
         const unknown = out.verification?.unknown_refs || [];
         if (text === PARSE_SAMPLE && unknown.length) {
           try {
-            const w = await api<WorkspaceOperate>("/api/v1/workspace");
+            const w = await fetchWorkspace();
             if (w.latest_run) {
               const ms = await api<{ result?: { lines?: { invoice_id: string }[] } }[]>(
                 `/api/v1/runs/${w.latest_run.run_id}/matches`
@@ -1092,6 +1111,103 @@ export default function Upload() {
                 pending, {settledCount} already run.
               </p>
             </>
+          )}
+        </Panel>
+      </Rise>
+
+      <Rise i={5}>
+        <Panel
+          title="Evidence fusion - one payment, three stories"
+          sub="In reality one payment's evidence arrives as a bank line, an email and a PDF, and they disagree. Paste each source and the engine fuses them into one bundle: every field keeps its provenance, and every conflict is settled by the stated rule - the bank's record of what landed beats any claim about what was sent."
+        >
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 mt-2">
+            {([
+              ["Bank line", fuseBank, setFuseBank, "e.g. Wire received $10,000.00 from Acme Widgets"],
+              ["Email claim", fuseEmail, setFuseEmail, "e.g. We have paid $10,400.00 against invoice INV-1005"],
+              ["PDF remittance text", fusePdf, setFusePdf, "e.g. Remittance advice: INV-1005 $10,000.00"],
+            ] as const).map(([label, val, set, ph]) => (
+              <label key={label} className="flex flex-col gap-1 text-[12px] text-mut">
+                {label}
+                <textarea
+                  value={val}
+                  onChange={(e) => set(e.target.value)}
+                  placeholder={ph}
+                  rows={4}
+                  className="bg-panel2 border border-line text-ink text-[13px] px-2.5 py-2 resize-y"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 flex-wrap mt-3">
+            <GhostBtn
+              onClick={async () => {
+                setFuseNote("");
+                const sources = [
+                  { kind: "bank", text: fuseBank },
+                  { kind: "email", text: fuseEmail },
+                  { kind: "pdf", text: fusePdf },
+                ].filter((s) => s.text.trim());
+                if (!sources.length) { setFuseNote("Paste at least one source."); return; }
+                try {
+                  const r = await api<FuseResult>("/api/v1/evidence/fuse", {
+                    method: "POST",
+                    body: JSON.stringify({ sources, stage: false }),
+                  });
+                  setFuseResult(r);
+                } catch (e) {
+                  setFuseNote(e instanceof Error ? e.message : String(e));
+                }
+              }}
+            >
+              Fuse the evidence
+            </GhostBtn>
+            {fuseResult && (
+              <GhostBtn
+                onClick={async () => {
+                  const sources = [
+                    { kind: "bank", text: fuseBank },
+                    { kind: "email", text: fuseEmail },
+                    { kind: "pdf", text: fusePdf },
+                  ].filter((s) => s.text.trim());
+                  try {
+                    const r = await api<FuseResult>("/api/v1/evidence/fuse", {
+                      method: "POST",
+                      body: JSON.stringify({ sources, stage: true }),
+                    });
+                    setFuseResult(r);
+                    setFuseNote(`Staged as ${r.staged_payment_id} - reconcile it from Run Reconciliation.`);
+                    loadWs();
+                  } catch (e) {
+                    setFuseNote(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                Stage the fused payment
+              </GhostBtn>
+            )}
+            {fuseNote && <span className="text-[12.5px] text-mut">{fuseNote}</span>}
+          </div>
+          {fuseResult && (
+            <div className="mt-3 text-[13px] leading-[1.65]">
+              <p className="m-0">
+                Fused: <b>{money(fuseResult.bundle.fields.amount_cents)}</b> from{" "}
+                <b>{fuseResult.bundle.fields.payer || "unknown payer"}</b>
+                {fuseResult.bundle.fields.deduction_cents > 0 &&
+                  <> - deduction claimed <b>{money(fuseResult.bundle.fields.deduction_cents)}</b></>}
+              </p>
+              <p className="m-0 text-mut">
+                Amount read from the {fuseResult.bundle.provenance.amount_cents || "none"} source;
+                payer from {fuseResult.bundle.provenance.payer || "none"};
+                references: {fuseResult.bundle.fields.references.join(", ") || "none"}.
+              </p>
+              {fuseResult.bundle.conflicts.map((cf, i) => (
+                <p key={i} className="m-0 text-warn">
+                  Conflict on {cf.field}: {Object.entries(cf.values).map(([k, v]) => `${k} said ${typeof v === "number" ? money(v) : v}`).join("; ")}.
+                  Winner: {cf.winner}. {cf.rule}
+                </p>
+              ))}
+              <p className="m-0 text-mut">{fuseResult.bundle.rule}</p>
+            </div>
           )}
         </Panel>
       </Rise>

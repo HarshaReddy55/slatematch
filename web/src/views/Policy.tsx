@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
-import { requestShellRefresh, type WorkspaceFull, useWsRefresh } from "../lib/chrome";
+import { requestShellRefresh, type WorkspaceFull, useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import { goView } from "../lib/operate";
 import Panel from "../ui/Panel";
 import ViewHead, { LoadError } from "../ui/ViewHead";
@@ -135,6 +137,13 @@ const GROUPS: { title: string; fields: Field[] }[] = [
         why: "The largest shortfall the autopilot may resolve at the Autonomous level. The default $250 keeps it to small residuals; level 1 ignores this and uses the tolerance write-off instead.",
         formula: "max |residual| the autopilot may close at level 2",
         type: "cents",
+      },
+      {
+        key: "collections_escalation_days",
+        label: "Collections escalation window (days overdue)",
+        why: "How overdue an invoice must be before the collections escalation pass (Forecast and Collections) drafts an escalation notice for it into the Outbox. A broken promise to pay escalates immediately, whatever this window says. The pass runs at most once per invoice per day and every escalation is audited.",
+        formula: "escalate when overdue days >= this window, or a promise is broken",
+        type: "number",
       },
       {
         key: "partial_allocation_mode",
@@ -291,7 +300,7 @@ export default function Policy({
         body: JSON.stringify({ policy: body }),
       });
       setSource("Source: tenant (just saved)");
-      const ws = await api<WorkspaceFull>("/api/v1/workspace");
+      const ws = await fetchWorkspace();
       if (ws && ws.case) {
         toast("Policy saved - re-running the active case under it");
         await api("/api/v1/batches", {

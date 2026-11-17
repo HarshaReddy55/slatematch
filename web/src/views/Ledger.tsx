@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, money } from "../lib/api";
-import { useWsRefresh } from "../lib/chrome";
+import { useWsRefresh,
+  fetchWorkspace,
+} from "../lib/chrome";
 import {
   cubeRows,
   ledgerKpis,
@@ -139,7 +141,7 @@ export default function Ledger({
     Promise.all([
       api<Invoice[]>("/api/v1/invoices"),
       api<ForecastData>("/api/v1/forecast"),
-      api<WorkspaceFull>("/api/v1/workspace"),
+      fetchWorkspace(),
     ])
       .then(([inv, fc, ws]) => setData({ inv, fc, ws }))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));

@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "../lib/api";
+import { useWsRefresh } from "../lib/chrome";
 import type { ApprovalEntry, DecideResponse } from "../lib/operate";
 import Panel from "../ui/Panel";
 import DataTable, { Row, Td, Th } from "../ui/DataTable";
@@ -22,11 +23,9 @@ import { GhostBtn, PrimaryBtn } from "../ui/Stage3";
 type RowState = { kind: "deciding" | "ok" | "no"; label: string };
 
 export default function Approvals({
-  reloadSignal,
   onEvidence,
   onDecided,
 }: {
-  reloadSignal: number;
   onEvidence: (a: ApprovalEntry) => void;
   onDecided: () => void;
 }) {
@@ -52,7 +51,12 @@ export default function Approvals({
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  useEffect(load, [load, reloadSignal]);
+  useEffect(load, [load]);
+  /* F10 (refresh consolidation): the queue used to take a
+     reloadSignal counter prop from Run; it now subscribes to
+     the shell refresh itself, like every other view. Every
+     former increment site already fired requestShellRefresh. */
+  useWsRefresh(load);
 
   useEffect(
     () => () => {

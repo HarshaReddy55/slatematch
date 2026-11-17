@@ -54,6 +54,7 @@ class Policy:
     # remainder spread pro-rata; falls back to pro_rata when the
     # remittance prices no line).
     partial_allocation_mode: str = "pro_rata"
+    collections_escalation_days: int = 14
     # FX conversion rates: {currency: USD value of one unit}, e.g.
     # {"EUR": 1.087} means 1 EUR = 1.087 USD. USD is always 1.0 and
     # needs no entry. Empty (the default) keeps currency a hard
@@ -74,6 +75,8 @@ class Policy:
     def __post_init__(self):
         if self.partial_allocation_mode not in ("pro_rata", "fifo_oldest", "explicit_line"):
             raise ValueError("partial_allocation_mode must be pro_rata, fifo_oldest or explicit_line")
+        if int(self.collections_escalation_days) < 1:
+            raise ValueError("collections_escalation_days must be at least 1")
         if self.autonomy_level not in (0, 1, 2):
             raise ValueError("autonomy_level must be 0 (off), 1 (assisted) or 2 (autonomous)")
         if int(self.autopilot_max_residual_cents) < 0:

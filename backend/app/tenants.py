@@ -22,7 +22,8 @@ class TenantStore:
         # which can make a fetchone() return None mid-flight - so every
         # access below is serialised through this lock.
         self.lock = threading.RLock()
-        self.conn = sqlite3.connect(os.path.join(base_dir, "_control.db"), check_same_thread=False)
+        from db import connect as _db_connect
+        self.conn = _db_connect(os.path.join(base_dir, "_control.db"))
         self.conn.execute("CREATE TABLE IF NOT EXISTS tenants (tenant_id TEXT PRIMARY KEY, name TEXT, created_at REAL)")
         self.conn.execute("""CREATE TABLE IF NOT EXISTS api_keys (key_hash TEXT PRIMARY KEY, tenant_id TEXT,
                              role TEXT, label TEXT, created_at REAL, revoked INTEGER DEFAULT 0)""")
