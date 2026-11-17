@@ -22,48 +22,51 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 
 @theme {
-  --color-bg: #232323;
-  --color-bg2: #1e1e1e;
-  --color-panel: #2a2a2a;
-  --color-panel2: #262626;
-  --color-line: #3a3a3c;
-  --color-line2: #4c4c4e;
-  --color-ink: #f2f0ea;
+  /* Kiln adaptation (owner-approved 18 Nov 2026, presentation only):
+     the palette moves to Kiln's cool near-black register - ground
+     #070709, panel #151518, raised #1a1a1e, hairline borders as
+     white-alpha, cool grey text. The product blue and the semantic
+     colours are unchanged. Vanilla's own stack (frontend/) keeps
+     vanilla's palette; these tokens are React-only. */
+  --color-bg: #101012;
+  --color-bg2: #1a1a1e;
+  --color-panel: #151518;
+  --color-panel2: #1a1a1e;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-line2: rgba(255, 255, 255, 0.15);
+  --color-ink: #ececf1;
   /* Stage 6: vanilla's exact tones, no React-only lifts. The Stage
      5B/5C lifts existed to keep text legible on the lifted bright-
      grey tiers; with the tiers gone (surfaces are vanilla's again),
      the lifts go too. Any tone pair that genuinely fails 4.5:1 on
      vanilla's own palette is reported in STAGE6.md, not silently
      lifted - vanilla is the spec. */
-  --color-mut: #a7a49d;
-  --color-mut2: #7e7c77;
+  --color-mut: #a7a7b1;
+  --color-mut2: #83838e;
   --color-blue: #3d75e8;
-  --color-blue2: #7fa6f2;
+  --color-blue2: #9db9ff;
   --color-ok: #34bf71;
   --color-okbg: rgba(52, 191, 113, 0.13);
   --color-warn: #f2c14e;
   --color-warnbg: rgba(242, 193, 78, 0.13);
   --color-bad: #e5484d;
   --color-badbg: rgba(229, 72, 77, 0.13);
-  /* The page ground: vanilla's --bg. */
-  --color-ground: #232323;
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-display: "Inter Tight", "Inter", system-ui, sans-serif;
+  /* The page ground: Kiln's near-black void. */
+  --color-ground: #070709;
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-display: "Geist", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 body {
   background-color: var(--color-ground);
-  /* Stage 6: the Stack Glass "lit ground" radial glow is removed -
-     it was a React-only invention with no vanilla counterpart.
-     What stays is vanilla's own ground treatment, carried over
-     exactly (livecube.css body::before, repeating-linear-gradient
-     90deg, rgba(255,255,255,.025) 0 1px, transparent 1px 9px),
-     fixed behind the panels. */
-  background-image: repeating-linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.025) 0 1px,
-    transparent 1px 9px
+  /* Kiln adaptation: the ground is a near-black void with one soft
+     radial glow at the top, behind the floating panel. Vanilla's
+     repeating hairline texture is retired in the React stack only. */
+  background-image: radial-gradient(
+    1100px 520px at 50% -60px,
+    rgba(88, 102, 160, 0.13),
+    rgba(7, 7, 9, 0) 70%
   );
   background-attachment: fixed;
   color: var(--color-ink);
@@ -119,6 +122,21 @@ body {
   }
 }
 
+/* Kiln adaptation - corner radius. The kit and views were built
+   square (rounded-none everywhere) under the old spec; the owner
+   approved Kiln's rounded discipline on 18 Nov 2026. Rather than
+   rewriting every view's class strings, the square utility now
+   resolves to a soft 12px radius at the stylesheet level. The
+   signature radii are set explicitly where they matter: the shell
+   panel 28px and Panel/StatCard 18px in their components, buttons
+   9px in Button.tsx, and fields 8px via .glass-input/.glass-select
+   below (declared later in this file, so they win over this rule).
+   Unlayered on purpose: unlayered rules beat the layered utilities,
+   which is what makes the override hold without touching views. */
+.rounded-none {
+  border-radius: 12px;
+}
+
 /* The surface recipes. The class names are the kit's (Panel,
    StatCard, the DataTable's Panel container, LoadError and the
    view-level card duplicates consume them), but Stage 6 resolves
@@ -151,7 +169,7 @@ body {
    fully opaque. */
 .glass-pop {
   background: var(--color-panel2);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 .glass-menu {
   background: #0d1117;
@@ -164,9 +182,9 @@ body {
    background:rgba(35,35,35,.92); backdrop-filter:blur(10px)).
    No gradient, no lifted tint. */
 .glass-side {
-  background: rgba(35, 35, 35, 0.92);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  /* Kiln adaptation: the rail is not a separate surface - it sits
+     directly on the floating panel with only a whisper of tint. */
+  background: rgba(255, 255, 255, 0.012);
 }
 
 /* Form fields (Stage 6): vanilla's field face, exactly -
@@ -181,6 +199,9 @@ body {
 .glass-input {
   background-color: var(--color-bg2);
   color: var(--color-ink);
+  /* Kiln field radius; declared after the .rounded-none override
+     above, so fields stay 8px where the utility asks for square. */
+  border-radius: 8px;
 }
 .glass-input::placeholder {
   color: var(--color-mut2);
@@ -197,6 +218,7 @@ body {
 .glass-select {
   background-color: var(--color-bg2);
   color: var(--color-ink);
+  border-radius: 8px;
 }
 .glass-select:focus {
   outline: none;

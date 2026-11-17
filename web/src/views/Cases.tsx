@@ -15,6 +15,23 @@ import ViewHead, { LoadError } from "../ui/ViewHead";
 import ViewSkeleton from "../ui/Skeleton";
 import { Reveal, Rise } from "../ui/motion";
 import { GhostBtn, PrimaryBtn } from "../ui/Stage3";
+import art01 from "../assets/kiln-art/card-01.png";
+import art02 from "../assets/kiln-art/card-02.png";
+import art03 from "../assets/kiln-art/card-03.png";
+import art04 from "../assets/kiln-art/card-04.png";
+import art05 from "../assets/kiln-art/card-05.png";
+import art06 from "../assets/kiln-art/card-06.png";
+import art07 from "../assets/kiln-art/card-07.png";
+import art08 from "../assets/kiln-art/card-08.png";
+import art09 from "../assets/kiln-art/card-09.png";
+import art10 from "../assets/kiln-art/card-10.png";
+import art11 from "../assets/kiln-art/card-11.png";
+
+/* Kiln adaptation (owner-approved 18 Nov 2026): each scenario card
+   carries a muted procedural marble band whose frosted strip holds
+   the card's figures in mono - the same figures the chips row below
+   carries. Presentation only; every element of the card is kept. */
+const CARD_ART = [art01, art02, art03, art04, art05, art06, art07, art08, art09, art10, art11];
 
 /* Stage 3: Use Cases (02). Refero/Linear density (blueprint 5): the
    story is cut to three lines with the rest behind the card's own
@@ -359,11 +376,32 @@ export default function Cases() {
       {list && (
         <Rise i={1}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            {list.map((s) => {
+            {list.map((s, i) => {
               const open = expanded.has(s.id);
               return (
                 <Panel key={s.id} title={s.title}>
-                  <div className="flex gap-1.5 flex-wrap mt-2">
+                  <div className="relative h-[86px] rounded-[12px] overflow-hidden mt-2.5">
+                    <img
+                      src={CARD_ART[i % CARD_ART.length]}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                      draggable={false}
+                    />
+                    <div
+                      className="absolute left-0 right-0 bottom-0 px-3 py-2"
+                      style={{
+                        background: "rgba(16,16,20,0.55)",
+                        backdropFilter: "blur(10px)",
+                        WebkitBackdropFilter: "blur(10px)",
+                        borderTop: "1px solid rgba(255,255,255,0.14)",
+                      }}
+                    >
+                      <span className="font-mono text-[11px] text-[#e8e8ee] whitespace-nowrap">
+                        {s.invoices} invoices · {s.payments} payments · {s.customers} customers · {money(s.open_cents)} open · {money(s.batch_cents)} batch
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap mt-2.5">
                     <Pill kind="info">{s.invoices} invoices</Pill>
                     <Pill kind="info">{s.payments} payments</Pill>
                     <Pill kind="info">{s.customers} customers</Pill>

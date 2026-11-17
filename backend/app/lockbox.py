@@ -1,5 +1,5 @@
-"""Bank lockbox and statement file parsers: BAI2, SWIFT MT940 and
-ISO 20022 camt.054.
+"""Bank lockbox and statement file parsers: BAI2, SWIFT MT940,
+ISO 20022 camt.054 and ANSI X12 EDI 820.
 
 Enterprise treasury does not export wires to CSV by hand - banks
 deliver these files over SFTP overnight. Each parser is
@@ -212,7 +212,114 @@ def parse_camt054(text):
     return payments
 
 
-PARSERS = {"bai2": parse_bai2, "mt940": parse_mt940, "camt054": parse_camt054}
+# -------------------------------------------------------------------
+# EDI 820 (ANSI X12 payment order / remittance advice)
+# -------------------------------------------------------------------
+
+def _edi_segments(text):
+    body = (text or "").replace("\r", " ").replace("\n", " ")
+    out = []
+    for raw in body.split("~"):
+        raw = raw.strip()
+        if raw:
+            out.append([el.strip() for el in raw.split("*")])
+    return out
+
+
+def _el(parts, idx):
+    return parts[idx] if len(parts) > idx else ""
+
+
+def _money_cents(raw):
+    try:
+        return int((Decimal((raw or "0").strip()) * 100).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP))
+    except Exception:
+        return 0
+
+
+def parse_edi820(text):
+    """One payment per ST*820 transaction set. The money is BPR02
+    (a decimal dollar amount); BPR03 'D' sets are debits and are
+    skipped, mirroring the credit-only rule of the other parsers.
+    RMR segments carry the per-invoice references and amounts:
+    RMR04 is what was paid toward the invoice, RMR05 its gross,
+    RMR06 a discount taken - so a short-paid invoice's claim is
+    visible in the structured fields, not buried in prose. ADX
+    adjustments are named in the remittance text the deduction
+    classifier reads."""
+    payments = []
+    current = None
+
+    def flush():
+        nonlocal current
+        if current and current["amount_cents"] > 0:
+            lines = [f"EDI 820 remittance from {current['payer']}"]
+            for ref, paid, gross, disc in current["rmr"]:
+                lines.append(
+                    f"Invoice {ref}: paid {paid / 100:.2f}, "
+                    f"gross {gross / 100:.2f}, discount {disc / 100:.2f}")
+            for amt, code in current["adx"]:
+                lines.append(f"Adjustment {amt / 100:.2f} reason code {code}")
+            pay = _payment(current["pid"], current["payer"],
+                           current["amount_cents"], "USD",
+                           "\n".join(lines))
+            refs = [r for r, _, _, _ in current["rmr"] if r]
+            if refs:
+                pay.references = refs
+            claimed = sum(max(0, g - p) + d
+                          for _, p, g, d in current["rmr"])
+            if claimed > 0:
+                pay.claimed_deduction_cents = claimed
+                codes = ", ".join(c for _, c in current["adx"] if c)
+                pay.deduction_reason_raw = (
+                    f"EDI 820 short payment per remittance detail"
+                    + (f"; adjustment codes {codes}" if codes else ""))
+            payments.append(pay)
+        current = None
+
+    for parts in _edi_segments(text):
+        tag = parts[0] if parts else ""
+        if tag == "ST" and _el(parts, 1) == "820":
+            flush()
+            current = {"pid": "", "payer": "", "amount_cents": 0,
+                       "rmr": [], "adx": []}
+        elif current is None:
+            continue
+        elif tag == "SE":
+            flush()
+        elif tag == "BPR":
+            if _el(parts, 3) == "D":
+                current = None
+                continue
+            current["amount_cents"] = _money_cents(_el(parts, 2))
+        elif tag == "TRN":
+            trace = re.sub(r"[^A-Za-z0-9-]", "", _el(parts, 2))
+            if trace:
+                current["pid"] = "EDI820-" + trace
+        elif tag == "N1" and _el(parts, 1) == "PR":
+            current["payer"] = _el(parts, 2)
+        elif tag == "RMR":
+            ref = _el(parts, 2)
+            if ref:
+                current["rmr"].append((
+                    ref,
+                    _money_cents(_el(parts, 4)),
+                    _money_cents(_el(parts, 5)),
+                    _money_cents(_el(parts, 6))))
+        elif tag == "ADX":
+            current["adx"].append((_money_cents(_el(parts, 1)),
+                                   _el(parts, 2)))
+    flush()
+    for i, p in enumerate(payments):
+        if p.payment_id.startswith("EDI820-") is False or \
+                p.payment_id == "EDI820-":
+            p.payment_id = f"EDI820-{i + 1:03d}"
+    return payments
+
+
+PARSERS = {"bai2": parse_bai2, "mt940": parse_mt940,
+           "camt054": parse_camt054, "edi820": parse_edi820}
 
 
 def sniff_lockbox_format(text, filename=""):
@@ -224,7 +331,12 @@ def sniff_lockbox_format(text, filename=""):
         return "bai2"
     if name.endswith((".940", ".sta", ".mt940")):
         return "mt940"
+    if name.endswith((".edi", ".820", ".x12")):
+        return "edi820"
     head = (text or "")[:1500]
+    if "ST*820" in head or (head.lstrip().startswith("ISA")
+                            and "BPR*" in head):
+        return "edi820"
     if head.lstrip().startswith("<") and ("camt.054" in head
                                           or "BkToCstmrDbtCdtNtfctn" in head):
         return "camt054"

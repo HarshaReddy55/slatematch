@@ -9,7 +9,6 @@ import {
 import {
   barOutcome,
   cleanRunShare,
-  heldCount,
   maeImprovement,
   probeText,
   runResolutionPct,
@@ -128,23 +127,11 @@ export default function Health() {
         api<{ criteria: CriterionRow[]; note: string }>("/api/v1/success-criteria")
           .catch(() => ({ criteria: [] as CriterionRow[], note: "" })),
       ]);
-      // Held counts come from each run's own matches payload (PROPOSED
-      // rows), the same records the Status Bar colour rule reads.
+      // Held counts come from the runs list itself: the backend
+      // counts PROPOSED matches per run in the same query, so this
+      // view no longer fetches every run's matches one by one.
       const heldByRun: Record<string, number> = {};
-      await Promise.all(
-        runs.map(async (run) => {
-          try {
-            const d = await api<MatchRecord[] | { matches: MatchRecord[] }>(
-              `/api/v1/runs/${run.run_id}/matches`
-            );
-            heldByRun[run.run_id] = heldCount(
-              Array.isArray(d) ? d : d.matches || []
-            );
-          } catch {
-            heldByRun[run.run_id] = 0;
-          }
-        })
-      );
+      for (const run of runs) heldByRun[run.run_id] = run.held || 0;
       setData({
         h, r, diag, audit, runs, heldByRun, profiles, trend,
         criteria: criteriaPack.criteria || [],

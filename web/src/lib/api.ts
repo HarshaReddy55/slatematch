@@ -64,6 +64,7 @@ export interface RunSummary {
   payments?: number;
   auto_posted?: number;
   exceptions?: number;
+  held?: number;
 }
 
 export interface MatchLine {

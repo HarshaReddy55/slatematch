@@ -336,7 +336,7 @@ export default function Casebar({
 
   return (
     <div
-      className="bg-panel2 rounded-none border border-line px-4 py-2.5"
+      className="border-y border-line px-1 py-3"
       aria-label="Case bar"
     >
       <div className="flex flex-col gap-2">

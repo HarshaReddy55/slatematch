@@ -21,7 +21,7 @@ export default function Panel({
 }) {
   return (
     <section
-      className={`glass-panel rounded-none border border-line p-4 sm:p-5 ${className}`}
+      className={`glass-panel rounded-[18px] border border-line p-4 sm:p-5 ${className}`}
     >
       {title && (
         <h3 className="font-display text-[15px] font-semibold text-ink m-0">

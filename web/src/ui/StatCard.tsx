@@ -37,7 +37,7 @@ export default function StatCard({
   const rolled = useRollUp(value ?? 0, format);
   return (
     <div
-      className={`glass-card rounded-none border border-line p-4 flex flex-col gap-1 min-w-0 ${onClick ? "cursor-pointer" : ""}`}
+      className={`glass-card rounded-[18px] border border-line p-4 flex flex-col gap-1 min-w-0 ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
       title={title}
       role={onClick ? "button" : undefined}

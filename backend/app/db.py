@@ -49,7 +49,8 @@ _REPLACE_TABLES = {
     "invoices": ("invoice_id", ["invoice_id", "customer", "subsidiary",
                                 "gross_cents", "currency", "po_number",
                                 "discount_rate", "age_days", "due_in_days",
-                                "predicted_delay_days", "status"]),
+                                "predicted_delay_days", "status",
+                                "original_gross_cents"]),
     "aliases": ("raw_name", ["raw_name", "customer", "source"]),
     "workspace_meta": ("key", ["key", "value"]),
     "payments": ("payment_id", None),  # the one call site lists columns
@@ -94,8 +95,12 @@ def translate(sql):
     if s.upper().startswith("BEGIN"):
         s = "BEGIN"
     # SQLite's rowid is insertion order; Postgres' ctid is the
-    # closest physical analogue (an updated row relocates, which
-    # for "latest record" reads is the semantics wanted anyway).
+    # closest physical analogue. Queries that must not depend on
+    # physical position at all (latest match, approvals queue)
+    # order by the owning run's created_at first and use the row
+    # position only as a tiebreak - those reach here in the
+    # qualified form (m.rowid), translated the same way.
+    s = s.replace(".rowid", ".ctid")
     s = s.replace("ORDER BY rowid", "ORDER BY ctid")
     return s
 

@@ -20,6 +20,13 @@ class Invoice:
     # speak in book values. None on every ordinary invoice.
     fx_book_gross_cents: Optional[int] = None
     fx_book_currency: Optional[str] = None
+    # The amount the invoice was originally billed at. gross_cents
+    # is the working open balance (partial applications reduce it);
+    # this field is written once at ingestion and never mutated, so
+    # the original billing record survives every settlement - the
+    # audit trail an external reviewer asks for. None on in-memory
+    # solver copies that are never persisted.
+    original_gross_cents: Optional[int] = None
 
 @dataclass
 class Payment:

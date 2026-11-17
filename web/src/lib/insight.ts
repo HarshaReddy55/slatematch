@@ -17,6 +17,7 @@ export interface Invoice {
   subsidiary?: string;
   po_number?: string;
   gross_cents: number;
+  original_gross_cents?: number | null;
   discount_rate?: number;
   age_days: number;
   due_in_days: number;

@@ -275,9 +275,13 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen text-ink font-sans">
-      <div className="flex flex-col lg:flex-row lg:items-start">
-        <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-line lg:w-[272px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen">
+    <main className="min-h-screen text-ink font-sans px-3 pt-3 pb-10 sm:px-5 lg:px-[46px] lg:pt-[14px] lg:pb-12">
+      {/* Kiln adaptation (owner-approved 18 Nov 2026): the whole app
+          sits in one floating rounded panel on the near-black ground.
+          Presentation only - the rail, nav and content structure
+          inside are the platform's own, unchanged. */}
+      <div className="flex flex-col lg:flex-row lg:items-stretch rounded-[28px] border border-line bg-[#101012] shadow-[0_30px_80px_rgba(0,0,0,0.5)] overflow-hidden">
+        <aside className="glass-side flex flex-col border-b lg:border-b-0 lg:border-r border-line lg:w-[272px] lg:shrink-0">
           <div className="relative flex items-start justify-between gap-3 px-4 pt-5 pb-4 shrink-0">
             {/* Logo: exactly as deployed in consolidated v2.
                 Owner, 16 Nov 2026: leave the logo as it is -
@@ -331,9 +335,9 @@ export default function App() {
                 const active = view === v.key;
                 const grpHead = i === 0 || VIEWS[i - 1].grp !== v.grp;
                 return (
-                  <div key={v.key} className="flex flex-col">
+                  <div key={v.key} className={`flex flex-col ${grpHead ? "mt-5" : ""}`}>
                     {grpHead && (
-                      <div className="font-mono text-[9.5px] tracking-[0.12em] text-mut2 px-[10px] pt-2.5 pb-[3px]">
+                      <div className="hidden font-mono text-[9.5px] tracking-[0.12em] text-mut2 px-[10px] pt-2.5 pb-[3px]">
                         {v.grp}
                       </div>
                     )}
@@ -343,22 +347,22 @@ export default function App() {
                         setPhoneOpen(false);
                       }}
                       aria-current={active ? "page" : undefined}
-                      className={`relative w-full text-left font-sans text-[13px] px-3 py-[6px] rounded-none border cursor-pointer bg-transparent ${
+                      className={`relative w-full text-left font-sans text-[13.5px] px-3 py-[7px] rounded-[10px] border cursor-pointer bg-transparent ${
                         active
-                          ? "border-blue text-white font-medium"
+                          ? "border-transparent text-ink font-medium"
                           : "border-transparent text-mut hover:text-ink"
                       }`}
                     >
                       {active && (
                         <motion.span
                           layoutId="view-pill"
-                          className="absolute inset-0 bg-blue rounded-none"
+                          className="absolute inset-0 bg-white/[0.07] rounded-[10px]"
                           transition={pillTransition}
                         />
                       )}
                       <span className="relative z-10 flex items-baseline">
                         <motion.span
-                          className={`font-mono text-[10.5px] mr-1.5 inline-block ${
+                          className={`hidden font-mono text-[10.5px] mr-1.5 ${
                             active ? "" : "text-mut2"
                           }`}
                           initial={false}
@@ -401,7 +405,7 @@ export default function App() {
         </aside>
 
         <div className="flex-1 min-w-0 w-full">
-          <div className="max-w-[1180px] mx-auto px-5 py-6 flex flex-col gap-4">
+          <div className="px-5 py-6 lg:px-10 lg:py-7 flex flex-col gap-4">
             <Casebar view={view} toast={toast} />
             <CaseBrief view={view} />
             {diffOpen && <RunDiff onClose={() => setDiffOpen(false)} />}

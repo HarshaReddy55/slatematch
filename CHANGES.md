@@ -1,61 +1,91 @@
-# SlateMatch - cumulative fix pack v7 (16 Nov 2026)
+# SlateMatch deploy pack - Kiln adaptation v1 (18 Nov 2026)
 
-THE ONLY PACK TO DEPLOY. Your last deploy was the consolidated
-pack v2; packs v3, v4 and v5 were never deployed. This pack
-contains every change since v2 in one set of files and
-supersedes all of them (v6 included).
+## What this pack is
 
-Copy the files into your clone at the same paths, commit,
-push, then Update service slatematch-app with Force new
-deployment.
+The COMPLETE current SlateMatch tree, packed as one deploy. It supersedes
+two packs that were built but never deployed:
 
-Suggested commit message:
-Post-v2 fixes: audit layout, seamless transitions, remittance
-vanilla organization, logo brand band
+- slatematch-fix-pack-v7.zip (audit panel rework, remittance rebuilt in
+  vanilla order, replay banner, case-switch flash fixes, logo reverted to
+  the v2 asset)
+- the optimisation pack v3 (77 files: cumulative nav pack, moat features,
+  Postgres dual-mode, optimisation)
 
-## What is in it
+Both are already inside this tree, together with everything else the core
+chat built after them. Deploy THIS pack only. Do not deploy v7 or the
+optimisation pack separately.
 
-Run view
-- Audit detail panel at full width below Matches/Exceptions
-  (it was squeezed into the two-column grid); reasons wrap in
-  full, matched invoices stack one per line, and the counts
-  line ("16 payments: 10 posted, 5 held for approval, 1 not
-  posted") shows in the panel, not only in the copied text.
-- A repeat streamed run is a replay on a scratch copy; the
-  banner now says so plainly instead of "undefined ms", and
-  the stored run not advancing on a replay is stated, by
-  design.
-- At run completion the agent strip stays until the stored
-  run lands - no blank flash.
+## Part B: the Kiln adaptation (new in this pack)
 
-Everywhere
-- Sections open at the top (the window kept the previous
-  section's scroll offset).
-- Case switches, restores and reseeds clear the old figures
-  instantly instead of flashing the previous case's numbers
-  (Dashboard, Run, Ledger, Forecast, Mail, SAP, Upload,
-  Health).
+The Kiln Workspace design (Sean Galt, uberdesigner.ai), approved by the
+owner on 18 Nov 2026, applied to the React stack as presentation only.
+Every control, flow, figure and behaviour is the platform's own; where
+skin and function conflicted, the skin yielded. No data was removed,
+reworded or re-routed: the adaptation touched only the presentation
+seams listed below, verified by a line-by-line diff audit.
 
-Upload Center - remittance, vanilla's organization
-- The wire card leads the panel: INBOUND WIRE AMOUNT, the
-  meta line, the claimed-deduction card inside it.
-- Then the mail and vanilla's tip line, the AI extraction
-  layer strip (vanilla's wording, from /health), and the
-  actions row.
-- Then the output: the pipeline as a compact 4-step strip
-  with per-step issues, and the Structured result block
-  (verifier line, auto-seed, raw response collapsed).
-- The two file streams stay side by side with the remittance
-  panel below them, per the 17:44 revision.
+Changed files:
 
-Logo
-- Untouched. Exactly as deployed in consolidated v2,
-  per the owner's instruction: leave the logo as it is.
+- web/index.html - Geist font loaded (JetBrains Mono kept)
+- web/src/index.css - Kiln palette tokens (ground #070709, panel #151518,
+  raised #1a1a1e, white-alpha hairlines, cool greys; product blue and
+  semantic colours unchanged), Geist stacks, ground glow, corner-radius
+  discipline (square utility resolves to 12px; fields 8px)
+- web/src/App.tsx - the app sits in one floating rounded panel (28px) on
+  the near-black ground; rail is label-only with a soft active pill
+  (numbers and group caps hidden by CSS, still in the DOM); content
+  runs full width
+- web/src/ui/Panel.tsx, web/src/ui/StatCard.tsx - 18px radius
+- web/src/ui/Button.tsx - 9px radius
+- web/src/ui/Casebar.tsx - borderless, hairline top and bottom
+- web/src/views/Cases.tsx - additive only: each scenario card gains a
+  muted marble band whose frosted strip prints the card's figures in
+  mono from the same bindings the chips row uses; the chips row, story,
+  proves line and both actions are untouched
+- web/src/assets/kiln-art/card-01..11.png - the 11 card artworks (new)
+- backend/tests/test_ui_contracts.py - the Stage 6 palette contract now
+  asserts the Kiln muted tones (owner-approved supersession, React stack
+  only); all other assertions unchanged
 
-Backend: unchanged. Suite 194 passed.
+Untouched, deliberately:
 
-## Still yours to do
+- The logo: the built bundle ships logo-glass-ygqXbPkV.png, the identical
+  v2 asset (same content hash as the v7 pack). Per the owner's order of
+  16 Nov 2026 the logo is closed.
+- The vanilla stack under frontend/ (its own CSS and palette), except
+  frontend/index.html, which was re-copied from the fresh React build
+  per the standing maintenance rule.
+- Every backend file, every API contract, every other view's logic.
 
-Delete the six dead files in your clone (they still serve):
-frontend/css/livecube.css and the five loose frontend/js/*.js
-files. NEVER delete frontend/js/vendor/.
+## Verification (run on this exact tree, 18 Nov 2026)
+
+- Frontend build: clean. Bundle index-Dx259ceX.js.
+- Backend suite: 265 passed, 1 failed (see Known issue). The UI contract
+  suite passes 32/32 with the updated palette contract.
+- Live local run of the packed tree: demo case staged, run executed -
+  10 of 16 payments auto-posted, 5 held (P4, P6, P7, P14, P16), 4
+  exceptions, cash applied $411,800.00, dispute recovery $3,903.00,
+  brief headline in the canonical form. All figures match ground truth.
+- Visual inspection at full size: Dashboard, Use Cases (all 11 cards
+  with art bands and figure strips), Run Reconciliation (full 16-row
+  staged table), Upload Center (remittance in vanilla order), Forecast.
+  Nothing missing, nothing clipped.
+
+## Known issue (pre-existing, not from the adaptation)
+
+backend/tests/test_moat_pack.py::test_collections_escalation_drafts_and_idempotent
+fails on this tree: a second collections escalation in the same day is
+not suppressed. The defect sits in the undeployed moat work from the
+core chat; the adaptation changed no backend code (the failure is
+identical with and without it). Tests do not run in production, so the
+deploy is not blocked by it, but the collections escalation behaviour
+should be fixed in the core chat before that feature is relied on.
+
+## Deploy
+
+1. Unzip over your GitHub clone of the repo (paths are repo-root
+   relative: backend/, web/, frontend/, Dockerfile, ...).
+2. Commit and push.
+3. Force new deployment on the slatematch-app ECS service.
+4. Post-deploy check from the UI chat: /health, the React bundle hash,
+   one canonical run, remittance order, audit counts line.

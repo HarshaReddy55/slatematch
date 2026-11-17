@@ -6,7 +6,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoices(
   invoice_id TEXT PRIMARY KEY, customer TEXT, subsidiary TEXT, gross_cents INTEGER,
   currency TEXT, po_number TEXT, discount_rate REAL, age_days INTEGER, due_in_days INTEGER,
-  predicted_delay_days REAL, status TEXT DEFAULT 'OPEN');
+  predicted_delay_days REAL, status TEXT DEFAULT 'OPEN', original_gross_cents INTEGER);
 CREATE TABLE IF NOT EXISTS payments(
   payment_id TEXT PRIMARY KEY, payer_raw TEXT, payer_customer TEXT, amount_cents INTEGER,
   currency TEXT, claimed_deduction_cents INTEGER, deduction_reason_raw TEXT,
@@ -98,6 +98,11 @@ class Repository:
                 acols = [r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()]
                 if "fingerprint" not in acols:
                     conn.execute("ALTER TABLE audit_log ADD COLUMN fingerprint TEXT")
+                icols = [r[1] for r in conn.execute("PRAGMA table_info(invoices)").fetchall()]
+                if "original_gross_cents" not in icols:
+                    conn.execute("ALTER TABLE invoices ADD COLUMN original_gross_cents INTEGER")
+                    conn.execute("UPDATE invoices SET original_gross_cents = gross_cents "
+                                 "WHERE original_gross_cents IS NULL")
                 conn.commit()
                 break
             except Exception:
@@ -178,9 +183,15 @@ class Repository:
             return cur
 
     def add_invoice(self, inv):
-        self._x("INSERT OR REPLACE INTO invoices VALUES (?,?,?,?,?,?,?,?,?,?, 'OPEN')",
+        # original_gross_cents is written once here, at ingestion,
+        # and never updated afterwards: partial applications reduce
+        # gross_cents (the open balance), never the billed record.
+        original = inv.gross_cents if inv.original_gross_cents is None \
+            else inv.original_gross_cents
+        self._x("INSERT OR REPLACE INTO invoices VALUES (?,?,?,?,?,?,?,?,?,?, 'OPEN', ?)",
                 (inv.invoice_id, inv.customer, inv.subsidiary, inv.gross_cents, inv.currency,
-                 inv.po_number, inv.discount_rate, inv.age_days, inv.due_in_days, inv.predicted_delay_days))
+                 inv.po_number, inv.discount_rate, inv.age_days, inv.due_in_days, inv.predicted_delay_days,
+                 original))
 
     def add_payment(self, pay, fingerprint=""):
         self._x("INSERT OR REPLACE INTO payments(payment_id, payer_raw, payer_customer, amount_cents,"
@@ -257,13 +268,14 @@ class Repository:
         except Exception: return None
 
     def open_invoices(self, customer=None, subsidiary=None):
-        q = "SELECT invoice_id, customer, subsidiary, gross_cents, currency, po_number, discount_rate, age_days, due_in_days, predicted_delay_days FROM invoices WHERE status='OPEN'"
+        q = "SELECT invoice_id, customer, subsidiary, gross_cents, currency, po_number, discount_rate, age_days, due_in_days, predicted_delay_days, original_gross_cents FROM invoices WHERE status='OPEN'"
         rows = self.conn.execute(q).fetchall()
         from domain import Invoice
         out = []
         for r in rows:
             inv = Invoice(invoice_id=r[0], customer=r[1], subsidiary=r[2], gross_cents=r[3], currency=r[4],
-                          po_number=r[5], discount_rate=r[6], age_days=r[7], due_in_days=r[8], predicted_delay_days=r[9])
+                          po_number=r[5], discount_rate=r[6], age_days=r[7], due_in_days=r[8], predicted_delay_days=r[9],
+                          original_gross_cents=r[10])
             if customer and inv.customer != customer: continue
             if subsidiary and inv.subsidiary != subsidiary: continue
             out.append(inv)
@@ -273,11 +285,12 @@ class Repository:
         """Every invoice in the workspace, any status (open or settled)."""
         rows = self.conn.execute(
             "SELECT invoice_id, customer, subsidiary, gross_cents, currency, po_number,"
-            " discount_rate, age_days, due_in_days, predicted_delay_days, status FROM invoices").fetchall()
+            " discount_rate, age_days, due_in_days, predicted_delay_days, status, original_gross_cents FROM invoices").fetchall()
         from domain import Invoice
         return [Invoice(invoice_id=r[0], customer=r[1], subsidiary=r[2], gross_cents=r[3],
                         currency=r[4], po_number=r[5], discount_rate=r[6], age_days=r[7],
-                        due_in_days=r[8], predicted_delay_days=r[9]) for r in rows]
+                        due_in_days=r[8], predicted_delay_days=r[9],
+                        original_gross_cents=r[10]) for r in rows]
 
     def settled_invoice_ids(self):
         """Invoices a run has already cleared: any invoice in the lines of
@@ -391,10 +404,12 @@ class Repository:
             "(SELECT COUNT(*) FROM matches m WHERE m.run_id=r.run_id) AS match_count, "
             "(SELECT COUNT(*) FROM matches m WHERE m.run_id=r.run_id AND m.status='AUTO_POSTED') AS auto_posted, "
             "(SELECT COUNT(*) FROM exceptions e WHERE e.run_id=r.run_id) AS exception_count, "
-            "(SELECT COUNT(*) FROM (SELECT payment_id FROM matches WHERE run_id=r.run_id UNION SELECT payment_id FROM exceptions WHERE run_id=r.run_id)) AS payment_count "
+            "(SELECT COUNT(*) FROM (SELECT payment_id FROM matches WHERE run_id=r.run_id UNION SELECT payment_id FROM exceptions WHERE run_id=r.run_id)) AS payment_count, "
+            "(SELECT COUNT(*) FROM matches m WHERE m.run_id=r.run_id AND m.status='PROPOSED') AS held_count "
             "FROM runs r ORDER BY r.created_at DESC LIMIT ?", (limit,)).fetchall()
         return [{"run_id": r[0], "kind": r[1], "status": r[2], "created_at": r[3], "finished_at": r[4],
-                 "matches": r[5], "auto_posted": r[6], "exceptions": r[7], "payments": r[8]} for r in rows]
+                 "matches": r[5], "auto_posted": r[6], "exceptions": r[7], "payments": r[8],
+                 "held": r[9]} for r in rows]
 
 
     def get_match(self, match_id):
@@ -405,9 +420,18 @@ class Repository:
                 "result": json.loads(row[4])}
 
     def latest_match_for_payment(self, payment_id):
+        # Ordered by the owning run's creation time, not by the
+        # match row's physical position: match rows are updated in
+        # place when decided, and on Postgres an update moves the
+        # row's ctid, which would make an old decided match look
+        # newer than a later run's match. The run timestamp is the
+        # stable truth on both engines; the row position only
+        # breaks ties inside one run (one match per payment there).
         row = self.conn.execute(
-            "SELECT match_id, run_id, payment_id, status, result_json FROM matches "
-            "WHERE payment_id=? ORDER BY rowid DESC LIMIT 1", (payment_id,)).fetchone()
+            "SELECT m.match_id, m.run_id, m.payment_id, m.status, m.result_json FROM matches m "
+            "LEFT JOIN runs r ON r.run_id = m.run_id "
+            "WHERE m.payment_id=? ORDER BY r.created_at DESC, m.rowid DESC LIMIT 1",
+            (payment_id,)).fetchone()
         if not row: return None
         return {"match_id": row[0], "run_id": row[1], "payment_id": row[2],
                 "status": row[3], "result": json.loads(row[4])}
@@ -632,8 +656,10 @@ class Repository:
 
     def list_proposed(self, limit=50):
         rows = self.conn.execute(
-            "SELECT match_id, run_id, payment_id, confidence, result_json FROM matches "
-            "WHERE status='PROPOSED' ORDER BY rowid DESC LIMIT ?", (limit,)).fetchall()
+            "SELECT m.match_id, m.run_id, m.payment_id, m.confidence, m.result_json FROM matches m "
+            "LEFT JOIN runs r ON r.run_id = m.run_id "
+            "WHERE m.status='PROPOSED' ORDER BY r.created_at DESC, m.rowid DESC LIMIT ?",
+            (limit,)).fetchall()
         out = []
         for r in rows:
             res = json.loads(r[4])

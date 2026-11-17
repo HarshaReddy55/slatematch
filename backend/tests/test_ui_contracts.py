@@ -524,11 +524,14 @@ def test_stage6_vanilla_fidelity_restoration():
     for grp in ("OPERATE", "INSIGHT & GOVERNANCE", "EVALS & ARCHITECTURE"):
         assert grp in app, grp
     assert app.index("<Casebar") < app.index("<CaseBrief") < app.index("{diffOpen && <RunDiff")
-    # Item 4: vanilla's exact palette is back; the Stage 5B/5C
-    # lifted tones are gone from the theme.
+    # Item 4: the palette contract. Stage 6 restored vanilla's exact
+    # palette; the Kiln adaptation (owner-approved 18 Nov 2026,
+    # presentation only, React stack only - vanilla's own stack is
+    # untouched) supersedes the two muted tones with Kiln's cool
+    # greys. The product blue and semantic colours are unchanged.
     css = _web_src("index.css")
-    for token in ("--color-blue: #3d75e8", "--color-mut: #a7a49d",
-                  "--color-mut2: #7e7c77", "--color-ok: #34bf71",
+    for token in ("--color-blue: #3d75e8", "--color-mut: #a7a7b1",
+                  "--color-mut2: #83838e", "--color-ok: #34bf71",
                   "--color-bad: #e5484d"):
         assert token in css, token
     for lifted in ("#3570e0", "#c4c1ba", "#c2c0ba", "#5eeaa0", "#ff9ea0"):

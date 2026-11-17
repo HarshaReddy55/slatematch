@@ -451,6 +451,16 @@ export default function Ledger({
                             </small>
                           </>
                         )}
+                        {!i.partial &&
+                          i.original_gross_cents != null &&
+                          i.original_gross_cents !== i.gross_cents && (
+                            <>
+                              <br />
+                              <small className="text-mut">
+                                Billed {money(i.original_gross_cents)}
+                              </small>
+                            </>
+                          )}
                       </Td>
                       <Td>
                         <EditCell
